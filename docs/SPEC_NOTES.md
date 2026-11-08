@@ -5,7 +5,7 @@ plus a hand-written overlay (`src/openapi.overlay.json`) for helpdesk routes the
 Reference version: Libredesk **v2.9.2** (route table `cmd/handlers.go`, handlers in `cmd/*.go`,
 models in `internal/*/models`). The code wins over the docs when they disagree.
 
-## Overlay operations (10)
+## Overlay operations (12)
 
 Each carries `x-source` (file + handler at v2.9.2) and a request/response shape read from the Go code.
 
@@ -21,6 +21,18 @@ Each carries `x-source` (file + handler at v2.9.2) and a request/response shape 
 | `GET /api/v1/macros/compact` | `handleGetMacrosCompact` | `cmd/macro.go` |
 | `GET /api/v1/macros/search` | `handleSearchMacros` | `cmd/macro.go` |
 | `GET /api/v1/macros/{id}` | `handleGetMacro` | `cmd/macro.go` |
+| `GET /api/v1/agents/compact` | `handleGetAgentsCompact` | `cmd/users.go` |
+| `GET /api/v1/teams/compact` | `handleGetTeamsCompact` | `cmd/teams.go` |
+
+Assignee lookups (`UserCompact` in `internal/user/models`, `TeamCompact` in `internal/team/models`): both
+routes need only authentication, whereas `GET /agents` needs `users:manage` and `GET /teams` needs
+`teams:manage`, so an agent that may assign conversations (`conversations:update_user_assignee`,
+`conversations:update_team_assignee`) can still look up the IDs. `agents/compact` takes `q` (name or
+email), `type` (`agent` or `ai_assistant`, else 400), `enabled=true`, `ids`, `page`, `page_size`;
+`teams/compact` takes `q`, `ids`, `page`, `page_size`. With `ids` (comma-separated, at most 200) every
+other filter and the pagination are ignored. The compact agent shape carries no API key. The `System`
+user is never listed. The responses reuse the docs spec's `AgentCompact` and `TeamCompact` schemas,
+which match the Go models field for field (checked); only the list envelopes are new.
 
 Macro reads (shapes from `internal/macro/models` and `internal/macro/queries.sql`): `/macros` and
 `/macros/{id}` return the full `Macro` (with `message_content`); `/macros/compact` and `/macros/search`
@@ -47,8 +59,8 @@ In scope but not added:
 - `GET /api/v1/custom-attributes/{id}`, `GET /api/v1/inboxes/{id}/campaign-stats`,
   `POST /api/v1/tags/import`, `GET /api/v1/tags/import/status`: admin (`*:manage`) settings or bulk
   import, not helpdesk reads.
-- `GET /api/v1/agents/compact`, `GET /api/v1/teams/compact`, `GET /api/v1/agents/me/teams`: agents
-  and teams management area.
+- `GET /api/v1/agents/me/teams`: the caller's own teams, not needed to assign conversations (the
+  `compact` lookups are in the overlay).
 - `POST /api/v1/csat/{uuid}/response`: public customer-facing endpoint, not an agent API.
 
 No in-scope route was dropped because its shape could not be established.

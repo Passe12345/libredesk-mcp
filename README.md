@@ -6,13 +6,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Libredes
 
 Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup). **Writes are enabled by default**; set `LIBREDESK_MCP_READ_ONLY=true` to register only `GET` operations (see [Hardening](#hardening)).
 
-Currently 91 operations: 81 from the published docs spec plus 10 from a hand-written overlay for v2.9.2 routes the docs lack (50 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
+Currently 93 operations: 81 from the published docs spec plus 12 from a hand-written overlay for v2.9.2 routes the docs lack (52 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
 
 ## Tools
 
 One tool per operation, grouped by API tag. Tools marked \* are writes: they do not exist when `LIBREDESK_MCP_READ_ONLY=true`. The names come from the `operationId`s, so they can change when the spec is refreshed; `update_ai_provider` of v0.1.0 no longer exists upstream.
 
-- **Agents** — `get_agents`, `create_agent` \*, `get_current_agent`, `update_agent_availability` \*, `delete_agent` \*, `get_agent`, `update_agent` \*, `revoke_api_key` \*, `generate_api_key` \*
+- **Agents** — `get_agents_compact` (agent IDs for assignment, no admin permission needed), `get_agents`, `create_agent` \*, `get_current_agent`, `update_agent_availability` \*, `delete_agent` \*, `get_agent`, `update_agent` \*, `revoke_api_key` \*, `generate_api_key` \*
 - **AI completions** — `ai_completion` \*, `get_ai_prompts`
 - **Contact notes** — `get_contact_notes`, `create_contact_note` \*, `delete_contact_note` \*
 - **Contacts** — `get_contacts`, `create_contact` \*, `get_contact`, `update_contact` \*, `delete_contact` \*, `block_contact` \*, `export_contact`, `update_contact_custom_attributes` \*
@@ -27,7 +27,7 @@ One tool per operation, grouped by API tag. Tools marked \* are writes: they do 
 - **Search** — `search_contacts`, `search_conversations`, `search_messages`, `paginated_search_conversations`, `paginated_search_messages`
 - **Status and priority** — `get_priorities`, `get_statuses`, `create_status` \*, `delete_status` \*, `update_status` \*
 - **Tags** — `get_tags`, `create_tag` \*, `update_tag` \*, `delete_tag` \*
-- **Teams** — `get_teams`, `create_team` \*, `delete_team` \*, `get_team`, `update_team` \*
+- **Teams** — `get_teams_compact` (team IDs for assignment, no admin permission needed), `get_teams`, `create_team` \*, `delete_team` \*, `get_team`, `update_team` \*
 
 ## Setup
 
@@ -43,7 +43,7 @@ Suggested role for reading and triaging tickets (Admin > Teammates > Roles). Tic
 | Conversation (to act on tickets) | Send private notes, Change conversation status, Change conversation priority, Add or remove conversation tags, Assign conversations to users / teams |
 | Contact | View all contacts, View contact details, View contact notes |
 
-For read-only use keep only the "View" permissions and start the server with `LIBREDESK_MCP_READ_ONLY=true`. Do not grant "Send messages in conversations" unless the model should be able to reply to customers. Tools that need an Admin permission (agents, teams, inbox details, macro management, reports, tags and statuses management) answer 403 with such a role; the role, not this server, is what limits the key.
+For read-only use keep only the "View" permissions and start the server with `LIBREDESK_MCP_READ_ONLY=true`. Do not grant "Send messages in conversations" unless the model should be able to reply to customers. Tools that need an Admin permission (agents, teams, inbox details, macro management, reports, tags and statuses management) answer 403 with such a role (to find who to assign a ticket to, use `get_agents_compact` and `get_teams_compact`, which need no Admin permission; `update_user_assignee` and `update_team_assignee` need the two "Assign conversations to ..." permissions); the role, not this server, is what limits the key.
 
 ### 2. Install a pinned local copy
 

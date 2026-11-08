@@ -211,6 +211,55 @@
         }
       }
     },
+    "/api/v1/agents/compact": {
+      "get": {
+        "tags": ["Agents"],
+        "summary": "Get Agents Compact",
+        "operationId": "handleGetAgentsCompact",
+        "description": "Agents and AI assistants in a short form (ID, name, email, enabled, availability), the list the web UI offers when assigning a conversation. Any authenticated agent, unlike `get_agents` which needs `users:manage`. Use the returned `id` as `assignee_id` of `update_user_assignee`.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/users.go", "handler": "handleGetAgentsCompact" },
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive substring of the name (agents: also matched on the email)" },
+          { "name": "type", "in": "query", "required": false, "schema": { "type": "string", "enum": ["agent", "ai_assistant"] }, "description": "Keep only this kind of user. Any other value is a 400" },
+          { "name": "enabled", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true"] }, "description": "Only the exact value `true` keeps the enabled users; anything else returns enabled and disabled ones" },
+          { "name": "ids", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Comma-separated IDs (at most 200, non-numeric or non-positive entries are ignored). When given, only these are returned and every other filter and the pagination are ignored" },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "Page number, used when page_size is set" },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "maximum": 500 }, "description": "Items per page, at most 500. 0 or absent: return every match" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentCompactListResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/teams/compact": {
+      "get": {
+        "tags": ["Teams"],
+        "summary": "Get Teams Compact",
+        "operationId": "handleGetTeamsCompact",
+        "description": "Teams in a short form (ID, name, emoji), the list the web UI offers when assigning a conversation. Any authenticated agent, unlike `get_teams` which needs `teams:manage`. Use the returned `id` as `assignee_id` of `update_team_assignee`.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/teams.go", "handler": "handleGetTeamsCompact" },
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive substring of the name (agents: also matched on the email)" },
+          { "name": "ids", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Comma-separated IDs (at most 200, non-numeric or non-positive entries are ignored). When given, only these are returned and every other filter and the pagination are ignored" },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "Page number, used when page_size is set" },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "maximum": 500 }, "description": "Items per page, at most 500. 0 or absent: return every match" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamCompactListResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/api/v1/inboxes/{id}": {
       "get": {
         "tags": ["Inboxes"],
@@ -318,6 +367,20 @@
         "type": "array",
         "items": { "$ref": "#/components/schemas/MacroAction" },
         "description": "Actions to apply, as a JSON array."
+      },
+      "AgentCompactListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AgentCompact" } }
+        }
+      },
+      "TeamCompactListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/TeamCompact" } }
+        }
       },
       "MacroActionResponse": {
         "type": "object",

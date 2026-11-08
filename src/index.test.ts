@@ -591,9 +591,26 @@ describe("overlay", () => {
       "get_macros_compact",
       "search_macros",
       "get_macro",
+      "get_agents_compact",
+      "get_teams_compact",
     ]) {
       expect(byName.has(n), n).toBe(true);
     }
+  });
+
+  it("models the assignee lookups: GET only, filters as query parameters", () => {
+    for (const n of ["get_agents_compact", "get_teams_compact"]) expect(byName.get(n)!.method, n).toBe("get");
+    expect(byName.get("get_agents_compact")!.queryParams.map((q) => q.name)).toEqual([
+      "q",
+      "type",
+      "enabled",
+      "ids",
+      "page",
+      "page_size",
+    ]);
+    expect(byName.get("get_teams_compact")!.queryParams.map((q) => q.name)).toEqual(["q", "ids", "page", "page_size"]);
+    // The tools that consume these IDs exist and take a body, so listing and assigning chain together.
+    for (const n of ["update_user_assignee", "update_team_assignee"]) expect(byName.get(n)!.method, n).toBe("put");
   });
 
   it("models the macro reads: path id, query filters, GET only", () => {
