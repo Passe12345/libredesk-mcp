@@ -37,7 +37,7 @@ writeFileSync(
 - SHA-256: ${sha}
 - Operations: ${operations}
 
-Refresh with \`npm run fetch-spec\`, then rebuild and run \`npm run check-drift\` if available.
+Refresh with \`npm run fetch-spec\`, rebuild, and run \`npm run check-drift\` to compare it with Libredesk's routes.
 Routes the docs spec lacks live in \`src/openapi.overlay.json\`.
 `,
 );
