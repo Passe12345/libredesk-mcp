@@ -10,6 +10,8 @@ import {
   resolveUploadPath,
   getAllowWrites,
   getUploadDir,
+  redactSecrets,
+  REDACTED,
   SERVER_VERSION,
   resolveRef,
   dereference,
@@ -858,5 +860,63 @@ describe("package metadata", () => {
   it("reports the package version as the server version", () => {
     expect(SERVER_VERSION).toBe(pkg.version);
     expect(pkg.version).toBe("0.2.0");
+  });
+});
+
+// ============================================================
+// Hardening: credentials never come back in tool output
+// ============================================================
+describe("secret redaction", () => {
+  const tools = new Map(buildTools(loadSpec()).map((t) => [t.name, t]));
+  // Sentinels, not plausible keys: a leak is then a plain string match.
+  const KEY = "SENTINEL-API-KEY-111";
+  const SECRET = "SENTINEL-API-SECRET-222";
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("replaces api_key and api_secret at any depth, including inside arrays", () => {
+    const out = redactSecrets({
+      status: "success",
+      data: { id: 4, api_key: KEY, nested: [{ api_secret: SECRET, name: "x" }] },
+    });
+    expect(JSON.stringify(out)).not.toContain("SENTINEL");
+    expect(out).toEqual({
+      status: "success",
+      data: { id: 4, api_key: REDACTED, nested: [{ api_secret: REDACTED, name: "x" }] },
+    });
+  });
+
+  it("leaves other fields alone, including api_key_last_used_at and null keys", () => {
+    const input = { api_key: null, api_secret: "", api_key_last_used_at: "2026-11-08T13:07:06Z", n: 1, ok: true };
+    expect(redactSecrets(input)).toEqual(input);
+  });
+
+  it("does not mutate its input", () => {
+    const input = { data: { api_key: KEY } };
+    redactSecrets(input);
+    expect(input.data.api_key).toBe(KEY);
+  });
+
+  it("redacts the key in what the model receives from get_current_agent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ status: "success", data: { id: 4, api_key: KEY } }), { status: 200 })),
+    );
+    const text = await callOperation(tools.get("get_current_agent")!, {}, "http://x.test", "k", "s");
+    expect(text).not.toContain(KEY);
+    expect(text).toContain(REDACTED);
+    expect(text).toContain('"id": 4');
+  });
+
+  it("keeps the credentials returned by generate_api_key, the one tool whose purpose they are", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ data: { api_key: KEY, api_secret: SECRET } }), { status: 200 })),
+    );
+    const text = await callOperation(tools.get("generate_api_key")!, { id: 4 }, "http://x.test", "k", "s");
+    expect(text).toContain(KEY);
+    expect(text).toContain(SECRET);
   });
 });

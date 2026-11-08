@@ -107,6 +107,10 @@ The MCP tool schema describes binary fields as `type: "string"` with a descripti
 
 `selectTools` drops non-GET tools before the `tools/list` and `tools/call` handlers are built, so a write tool is an "Unknown tool" when `LIBREDESK_MCP_READ_ONLY=true`. `callOperation` itself does not check the mode.
 
+### Secrets in responses
+
+`callOperation` passes every successful JSON response through `redactSecrets`, which replaces any string value of an `api_key` or `api_secret` key (any depth, input not mutated) by `REDACTED`. `generate_api_key` (`KEY_GENERATION_TOOL`) is exempt because it returns the new credentials on purpose. If Libredesk adds another secret-bearing field, add its name to `SECRET_FIELDS`. Non-JSON and error bodies are returned as received.
+
 ### No trailing-slash normalization on base URL
 
 `LIBREDESK_URL` has its trailing slash stripped at startup. But the constructed URLs use `${LIBREDESK_URL}${tool.path}` which always produces `base/path`, never `base//path`. This is safe as long as you don't change the concatenation pattern.

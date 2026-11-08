@@ -138,6 +138,7 @@ Authentication uses Libredesk's token scheme: `Authorization: token <api_key>:<a
 
 - **Opt-in read-only mode.** With `LIBREDESK_MCP_READ_ONLY=true` the server lists and accepts only `GET` tools; write tools do not exist for the model. Writes are on by default, so give the key an agent role as narrow as you need: the flag limits what the model can call, the role limits what the key can do. Ticket content is untrusted input (prompt injection), which is the main reason to prefer read-only when you only need to read.
 - **No arbitrary file reads.** Multipart fields typed as binary (avatar and media uploads) used to read any local path the model supplied. They are now refused unless `LIBREDESK_MCP_UPLOAD_DIR` is set, and then only a regular file whose real path (after symlinks) lies inside that directory is read; relative paths are resolved against it.
+- **No credentials in tool output.** Libredesk returns an agent's API key in clear (`GET /agents/me`, agent lists), and tool output ends up in the model's context and in transcripts. Every `api_key` and `api_secret` value of a response is replaced by `[redacted by libredesk-mcp]`, at any depth. The one exception is `generate_api_key`, whose purpose is to return the new credentials. Request parameters and the `Authorization` header are unaffected.
 - **Not publishable by accident.** `package.json` has `"private": true`.
 
 ## How it works

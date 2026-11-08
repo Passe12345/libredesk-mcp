@@ -78,6 +78,26 @@ export function getUploadDir(): string {
   return process.env.LIBREDESK_MCP_UPLOAD_DIR || "";
 }
 
+export const REDACTED = "[redacted by libredesk-mcp]";
+// Tool whose response legitimately carries the new credentials (POST /agents/{id}/api-key).
+export const KEY_GENERATION_TOOL = "generate_api_key";
+const SECRET_FIELDS = new Set(["api_key", "api_secret"]);
+
+// Returns a copy of a parsed JSON response with every `api_key` / `api_secret` value replaced, at any
+// depth: Libredesk returns an agent's API key in clear (e.g. GET /agents/me), and tool output lands
+// in the model's context and in transcripts. `api_key_last_used_at` and similar are not touched.
+export function redactSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = SECRET_FIELDS.has(k) && typeof v === "string" && v !== "" ? REDACTED : redactSecrets(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function selectTools(tools: ToolDef[], allowWrites: boolean): ToolDef[] {
   return allowWrites ? tools : tools.filter((t) => t.method === "get");
 }
@@ -416,7 +436,9 @@ export async function callOperation(
   }
   try {
     const parsed = JSON.parse(text);
-    return `${meta}\n\n${JSON.stringify(parsed, null, 2)}`;
+    // The key generation tool is the one place where credentials are returned on purpose.
+    const safe = tool.name === KEY_GENERATION_TOOL ? parsed : redactSecrets(parsed);
+    return `${meta}\n\n${JSON.stringify(safe, null, 2)}`;
   } catch {
     return `${meta}\n\n${text}`;
   }
