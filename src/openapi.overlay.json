@@ -321,6 +321,50 @@
           "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
+      },
+      "put": {
+        "tags": ["Automations"],
+        "summary": "Update Automation Rule",
+        "operationId": "handleUpdateAutomationRule",
+        "description": "Replaces a rule: name, description, type, events, enabled and rules are all overwritten with the body, nothing is merged. Send `enabled` explicitly: leaving it out stores false and disables the rule. Read the rule first (`get_automation_rule`) and resend every field. The server does not validate the content of `rules`. Requires the `automations:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleUpdateAutomationRule" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Automation rule ID" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleRequest" } } }
+        },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rule updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Automations"],
+        "summary": "Delete Automation Rule",
+        "operationId": "handleDeleteAutomationRule",
+        "description": "Permanently deletes a rule. It cannot be undone, and conversations it already acted on keep their changes. To stop a rule without losing it, use `toggle_automation_rule`. Requires the `automations:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleDeleteAutomationRule" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Automation rule ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rule deleted",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
       }
     },
     "/api/v1/automations/rules/{id}/toggle": {
@@ -399,6 +443,50 @@
             "description": "Shared view retrieved successfully",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SharedViewResponse" } } }
           },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `shared_views:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "put": {
+        "tags": ["Views"],
+        "summary": "Update Shared View",
+        "operationId": "handleUpdateSharedView",
+        "description": "Replaces a shared view: name, filters, visibility and team_id are all overwritten with the body, nothing is merged, so read the view first (`get_shared_view`) and resend every field. A personal view answers 404. Requires the `shared_views:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/views.go", "handler": "handleUpdateSharedView" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "View ID" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SharedViewRequest" } } }
+        },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Shared view updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SharedViewResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `shared_views:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Views"],
+        "summary": "Delete Shared View",
+        "operationId": "handleDeleteSharedView",
+        "description": "Permanently deletes a shared view; the conversations are untouched. It cannot be undone. A personal view answers 404. Requires the `shared_views:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/views.go", "handler": "handleDeleteSharedView" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "View ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Shared view deleted",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "description": "Forbidden: requires the `shared_views:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
         }
@@ -567,6 +655,7 @@
         "required": ["name", "type", "rules"],
         "properties": {
           "name": { "type": "string", "maxLength": 140 },
+          "enabled": { "type": "boolean", "description": "Only read by update_automation_rule, which stores it (false when omitted). Ignored on create: a created rule is always enabled" },
           "description": { "type": "string", "maxLength": 300 },
           "type": { "type": "string", "enum": ["new_conversation", "conversation_update", "time_trigger"], "description": "new_conversation: on every new conversation. conversation_update: on the listed events. time_trigger: periodic, on the hours_since_* conditions" },
           "events": { "type": "array", "items": { "type": "string", "enum": ["conversation.user.assigned", "conversation.team.assigned", "conversation.status.change", "conversation.priority.change", "conversation.message.outgoing", "conversation.message.incoming"] }, "description": "Only for conversation_update; leave empty for the other types" },

@@ -27,9 +27,13 @@ Each carries `x-source` (file + handler at v2.9.2) and a request/response shape 
 | `POST /api/v1/automations/rules` | `handleCreateAutomationRule` | `cmd/automation.go` |
 | `GET /api/v1/automations/rules/{id}` | `handleGetAutomationRule` | `cmd/automation.go` |
 | `PUT /api/v1/automations/rules/{id}/toggle` | `handleToggleAutomationRule` | `cmd/automation.go` |
+| `PUT /api/v1/automations/rules/{id}` | `handleUpdateAutomationRule` | `cmd/automation.go` |
+| `DELETE /api/v1/automations/rules/{id}` | `handleDeleteAutomationRule` | `cmd/automation.go` |
 | `GET /api/v1/shared-views` | `handleGetAllSharedViews` | `cmd/views.go` |
 | `POST /api/v1/shared-views` | `handleCreateSharedView` | `cmd/views.go` |
 | `GET /api/v1/shared-views/{id}` | `handleGetSharedView` | `cmd/views.go` |
+| `PUT /api/v1/shared-views/{id}` | `handleUpdateSharedView` | `cmd/views.go` |
+| `DELETE /api/v1/shared-views/{id}` | `handleDeleteSharedView` | `cmd/views.go` |
 
 Assignee lookups (`UserCompact` in `internal/user/models`, `TeamCompact` in `internal/team/models`): both
 routes need only authentication, whereas `GET /agents` needs `users:manage` and `GET /teams` needs
@@ -41,7 +45,7 @@ other filter and the pagination are ignored. The compact agent shape carries no 
 user is never listed. The responses reuse the docs spec's `AgentCompact` and `TeamCompact` schemas,
 which match the Go models field for field (checked); only the list envelopes are new.
 
-Automation rules (`cmd/automation.go`, `internal/automation` and its `models` at v2.9.2), all four routes
+Automation rules (`cmd/automation.go`, `internal/automation` and its `models` at v2.9.2), all six routes
 behind `automations:manage`:
 
 - The record is `{name, description, type, events, enabled, weight, execution_mode, rules}`. `rules` is
@@ -57,8 +61,9 @@ behind `automations:manage`:
 - `toggle` flips `enabled` with no body and returns the updated record; there is no way to set it explicitly.
 - `assign_user` and `assign_team` take the ID as the first element of `value`, as a string
   (`strconv.Atoi(action.Value[0])` in `internal/conversation`).
-- Left out (stay in the web UI): `PUT /rules/{id}` (update), `DELETE /rules/{id}`, `PUT /rules/weights`,
-  `PUT /rules/execution-mode`. The condition field list in the overlay comes from the constants of
+- `PUT /rules/{id}` (`UpdateRule`) overwrites name, description, type, events, rules **and enabled** with the
+  body, so a body without `enabled` stores false and disables the rule. The query is an upsert (`ON CONFLICT (id)`), so a PUT on an id that does not exist creates a rule with that id. `DELETE /rules/{id}` is a hard delete.
+- Left out (stay in the web UI): `PUT /rules/weights`, `PUT /rules/execution-mode`. The condition field list in the overlay comes from the constants of
   `internal/automation/models`; I did not read the web UI, so its menu labels may differ.
 
 Shared views (`cmd/views.go`, `internal/view` at v2.9.2), behind `shared_views:manage`: `visibility` is `all` or
@@ -66,7 +71,7 @@ Shared views (`cmd/views.go`, `internal/view` at v2.9.2), behind `shared_views:m
 `ListFilterAllowedFields` plus the `tags` renderer. There is no subject or content field, so a view cannot
 match on text: tag the conversations (automation action `add_tags`) and filter on the tag. A tag condition
 is `contains` / `not contains` with the tag IDs as a JSON array in a string (`"[3]"`), or `set` / `not set`.
-Left out: `PUT` and `DELETE /shared-views/{id}`, personal views (`/views/me`) and `/views/shared`.
+`PUT /shared-views/{id}` overwrites name, filters, visibility and team_id (`UpdateSharedView`); a personal view answers 404 on PUT and DELETE. Left out: personal views (`/views/me`) and `/views/shared`.
 
 Macro reads (shapes from `internal/macro/models` and `internal/macro/queries.sql`): `/macros` and
 `/macros/{id}` return the full `Macro` (with `message_content`); `/macros/compact` and `/macros/search`

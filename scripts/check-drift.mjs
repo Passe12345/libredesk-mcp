@@ -28,9 +28,9 @@ export const OUT_OF_SCOPE = [
   "/api/v1/roles",
   "/api/v1/oidc",
   "/api/v1/webhooks",
-  // Automations: list, read, create and toggle are covered; editing, deleting and reordering rules stay in the web UI
-  "PUT /api/v1/automations/rules",
-  "DELETE /api/v1/automations/rules",
+  // Automations: rule weights and the execution mode (PUT /rules/weights, PUT /rules/execution-mode) stay in the web UI
+  "PUT /api/v1/automations/rules/weights",
+  "PUT /api/v1/automations/rules/execution-mode",
   "/api/v1/business-hours",
   "/api/v1/templates",
   "/api/v1/sla",
@@ -39,9 +39,6 @@ export const OUT_OF_SCOPE = [
   // Views, authentication and account self-service
   "/api/v1/views/me",
   "/api/v1/views/shared",
-  // Shared views: list, read and create are covered; editing and deleting stay in the web UI
-  "PUT /api/v1/shared-views",
-  "DELETE /api/v1/shared-views",
   "/api/v1/auth",
   "/api/v1/agents/import",
   "/api/v1/agents/reset-password",
