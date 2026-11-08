@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   loadSpec,
+  mergeOverlay,
+  callOperation,
   resolveRef,
   dereference,
   toolNameFromOperationId,
@@ -480,11 +482,14 @@ function countOperations(paths: Record<string, Record<string, unknown>>): number
 }
 
 describe("bundled spec", () => {
-  const raw = JSON.parse(readFileSync(new URL("./openapi.json", import.meta.url), "utf-8")) as OpenAPISpec;
+  const readJson = (name: string) =>
+    JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), "utf-8")) as OpenAPISpec;
+  const raw = readJson("openapi.json");
+  const overlay = readJson("openapi.overlay.json");
   const tools = buildTools(loadSpec());
 
-  it("registers one tool per operation of the spec (count derived, not hard-coded)", () => {
-    expect(tools.length).toBe(countOperations(raw.paths));
+  it("registers one tool per operation of the spec plus overlay (count derived, not hard-coded)", () => {
+    expect(tools.length).toBe(countOperations(raw.paths) + countOperations(overlay.paths));
     expect(tools.length).toBeGreaterThan(0);
   });
 
@@ -515,5 +520,134 @@ describe("bundled spec", () => {
     const required = tool.inputSchema.required as string[];
     expect(required).not.toContain("subject");
     expect(required).not.toContain("last_name");
+  });
+});
+
+// ============================================================
+// Overlay
+// ============================================================
+describe("overlay", () => {
+  const readJson = (name: string) =>
+    JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), "utf-8")) as OpenAPISpec;
+  const base = readJson("openapi.json");
+  const overlay = readJson("openapi.overlay.json");
+  const merged = loadSpec();
+  const tools = buildTools(merged);
+  const byName = new Map(tools.map((t) => [t.name, t]));
+
+  it("only adds operations the base spec lacks", () => {
+    for (const [p, methods] of Object.entries(overlay.paths)) {
+      for (const m of Object.keys(methods)) expect(base.paths[p]?.[m], `${m} ${p}`).toBeUndefined();
+    }
+  });
+
+  it("traces every overlay operation to a handler at v2.9.2", () => {
+    for (const [p, methods] of Object.entries(overlay.paths)) {
+      for (const [m, op] of Object.entries(methods)) {
+        const src = (op as unknown as Record<string, Record<string, string>>)["x-source"];
+        expect(src, `${m} ${p}`).toBeDefined();
+        expect(src.tag).toBe("v2.9.2");
+        expect(src.file).toMatch(/^cmd\/.+\.go$/);
+        expect(src.handler).toBe(op.operationId);
+      }
+    }
+  });
+
+  it("resolves every $ref of the merged spec", () => {
+    const refs: string[] = [];
+    const walk = (v: unknown) => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") {
+        for (const [k, x] of Object.entries(v)) {
+          if (k === "$ref" && typeof x === "string") refs.push(x);
+          else walk(x);
+        }
+      }
+    };
+    walk(merged.paths);
+    walk(merged.components);
+    expect(refs.length).toBeGreaterThan(0);
+    for (const r of refs) expect(Object.keys(resolveRef(merged, r)).length, r).toBeGreaterThan(0);
+  });
+
+  it("exposes the overlay tools", () => {
+    for (const n of [
+      "get_sidebar_counts",
+      "get_all_drafts",
+      "upsert_conversation_draft",
+      "delete_conversation_draft",
+      "apply_macro",
+      "get_inbox",
+    ]) {
+      expect(byName.has(n), n).toBe(true);
+    }
+  });
+
+  it("models the macro body as a required array", () => {
+    const tool = byName.get("apply_macro")!;
+    expect(tool.pathParams).toEqual(["uuid", "id"]);
+    const props = tool.inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(props.body.type).toBe("array");
+    expect(tool.inputSchema.required).toContain("body");
+  });
+
+  it("reads the draft type to delete from the query string", () => {
+    const tool = byName.get("delete_conversation_draft")!;
+    expect(tool.queryParams).toEqual([{ name: "type", required: false }]);
+  });
+});
+
+describe("mergeOverlay", () => {
+  const base: OpenAPISpec = {
+    paths: { "/a": { get: { operationId: "handleA" } } },
+    components: { schemas: { S: { type: "string" } } },
+  };
+
+  it("adds paths, methods on existing paths and schemas without mutating the base", () => {
+    const merged = mergeOverlay(base, {
+      paths: { "/a": { post: { operationId: "handleB" } }, "/c": { get: { operationId: "handleC" } } },
+      components: { schemas: { T: { type: "integer" } } },
+    });
+    expect(Object.keys(merged.paths["/a"]).sort()).toEqual(["get", "post"]);
+    expect(merged.paths["/c"].get.operationId).toBe("handleC");
+    expect(Object.keys(merged.components!.schemas!).sort()).toEqual(["S", "T"]);
+    expect(Object.keys(base.paths["/a"])).toEqual(["get"]);
+  });
+
+  it("refuses to redefine an existing method and path", () => {
+    expect(() => mergeOverlay(base, { paths: { "/a": { get: { operationId: "handleX" } } } })).toThrow(/already exists/);
+  });
+
+  it("refuses a duplicate operationId", () => {
+    expect(() => mergeOverlay(base, { paths: { "/z": { get: { operationId: "handleA" } } } })).toThrow(/operationId/);
+  });
+
+  it("refuses a duplicate schema name", () => {
+    expect(() =>
+      mergeOverlay(base, { paths: {}, components: { schemas: { S: { type: "number" } } } }),
+    ).toThrow(/schema S/);
+  });
+});
+
+// ============================================================
+// Array request bodies
+// ============================================================
+describe("array request body", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends an array body as-is instead of spreading it into an object", async () => {
+    const fetchMock = vi.fn(async () => new Response('{"message":"ok"}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = buildTools(loadSpec()).find((t) => t.name === "apply_macro")!;
+    const actions = [{ type: "set_status", value: ["3"] }];
+
+    await callOperation(tool, { uuid: "c-1", id: 7, body: actions }, "http://x.test", "k", "s");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://x.test/api/v1/conversations/c-1/macros/7/apply");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual(actions);
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
 });

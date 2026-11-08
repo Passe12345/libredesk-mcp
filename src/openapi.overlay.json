@@ -1,0 +1,284 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "libredesk API overlay",
+    "description": "Hand-written operations for helpdesk routes that exist in Libredesk v2.9.2 but are absent from the published docs spec. Every shape is derived from the Go sources at tag v2.9.2 (see x-source on each operation and docs/SPEC_NOTES.md). Merged into src/openapi.json at load time.",
+    "version": "v2.9.2"
+  },
+  "paths": {
+    "/api/v1/conversations/sidebar-counts": {
+      "get": {
+        "tags": ["Conversations"],
+        "summary": "Get Sidebar Counts",
+        "operationId": "handleGetSidebarCounts",
+        "description": "Open-conversation counts for the inbox sidebar badges of the caller: assigned, mentioned, unassigned and all, plus one count per view the caller can access (personal views and shared views of the caller's teams). Per-view counts are scan-capped at 100 in the code (the UI shows 99+). Requires the `conversations:read` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/conversation.go", "handler": "handleGetSidebarCounts" },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Counts retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SidebarCountsResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/drafts": {
+      "get": {
+        "tags": ["Conversations"],
+        "summary": "Get All Drafts",
+        "operationId": "handleGetAllDrafts",
+        "description": "All unsent reply and private-note drafts saved by the caller, across conversations. Any authenticated agent.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/draft.go", "handler": "handleGetAllDrafts" },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Drafts retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConversationDraftListResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/conversations/{uuid}/draft": {
+      "post": {
+        "tags": ["Conversations"],
+        "summary": "Save Conversation Draft",
+        "operationId": "handleUpsertConversationDraft",
+        "description": "Saves or updates the caller's draft for a conversation. `type` defaults to `reply`. The request is rejected with 400 when `content` is blank and `meta` is empty or `{}`, and when `meta` is larger than 32 KB. The caller must have access to the conversation.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/draft.go", "handler": "handleUpsertConversationDraft" },
+        "parameters": [
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Conversation UUID" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DraftRequest" } } }
+        },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Draft saved",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConversationDraftResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Conversations"],
+        "summary": "Delete Conversation Draft",
+        "operationId": "handleDeleteConversationDraft",
+        "description": "Deletes the caller's draft for a conversation. Without `type`, drafts of every type are deleted. The handler does not check conversation access: it only touches the caller's own drafts.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/draft.go", "handler": "handleDeleteConversationDraft" },
+        "parameters": [
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Conversation UUID" },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["reply", "private_note"] },
+            "description": "Draft type to delete. Omit to delete all types."
+          }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Draft deleted",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/conversations/{uuid}/macros/{id}/apply": {
+      "post": {
+        "tags": ["Conversations"],
+        "summary": "Apply Macro To Conversation",
+        "operationId": "handleApplyMacro",
+        "description": "Applies a list of macro actions to a conversation and increments the macro's usage count. The body is a JSON array of actions (not an object), at most one action per type. Allowed action types: assign_team, assign_user, set_status, set_priority, add_tags, set_tags, remove_tags; send_reply and send_private_note are refused (403). The caller needs the permission matching each action type. Answers 200 when every action succeeded, 207 when only some did, and 500 when none did. The success body is `{\"message\": ...}`, not the usual status/data envelope.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/macro.go", "handler": "handleApplyMacro" },
+        "parameters": [
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Conversation UUID" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Macro ID" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroApplyRequest" } } }
+        },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "All actions applied",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroApplyResponse" } } }
+          },
+          "207": {
+            "description": "Some actions applied",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroApplyResponse" } } }
+          },
+          "400": { "description": "Invalid request or duplicate action types", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden or action not allowed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Conversation or macro not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "description": "No action could be applied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/inboxes/{id}": {
+      "get": {
+        "tags": ["Inboxes"],
+        "summary": "Get Inbox",
+        "operationId": "handleGetInbox",
+        "description": "A single inbox by ID. Passwords, OAuth tokens and client secrets in `config` are masked. Unlike the inbox list, this route requires the `inboxes:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/inboxes.go", "handler": "handleGetInbox" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Inbox ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Inbox retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InboxDetailResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SidebarCounts": {
+        "type": "object",
+        "properties": {
+          "assigned": { "type": "integer" },
+          "mentioned": { "type": "integer" },
+          "unassigned": { "type": "integer" },
+          "all": { "type": "integer" },
+          "views": {
+            "type": "object",
+            "additionalProperties": { "type": "integer" },
+            "description": "Count per accessible view, keyed by view ID."
+          }
+        }
+      },
+      "SidebarCountsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/SidebarCounts" }
+        }
+      },
+      "DraftRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["reply", "private_note"],
+            "default": "reply",
+            "description": "Draft type. Defaults to `reply` when omitted or empty."
+          },
+          "content": { "type": "string", "description": "Draft content (HTML). Inline images are rewritten to cid: references on save." },
+          "meta": { "description": "Free-form JSON stored with the draft, at most 32 KB. The code does not constrain its shape." }
+        }
+      },
+      "ConversationDraft": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "conversation_id": { "type": "integer", "format": "int64" },
+          "conversation_uuid": { "type": "string" },
+          "user_id": { "type": "integer", "format": "int64" },
+          "type": { "type": "string", "enum": ["reply", "private_note"] },
+          "content": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "meta": { "description": "Free-form JSON saved with the draft." }
+        }
+      },
+      "ConversationDraftResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/ConversationDraft" }
+        }
+      },
+      "ConversationDraftListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/ConversationDraft" } }
+        }
+      },
+      "MacroAction": {
+        "type": "object",
+        "required": ["type", "value"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["assign_team", "assign_user", "set_status", "set_priority", "add_tags", "set_tags", "remove_tags"],
+            "description": "Action type. At most one action per type in a request."
+          },
+          "value": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "assign_team, assign_user, set_status and set_priority read the first element as a numeric ID (team, agent, status, priority) sent as a string. The three tag actions take the list of tag names."
+          }
+        }
+      },
+      "MacroApplyRequest": {
+        "type": "array",
+        "items": { "$ref": "#/components/schemas/MacroAction" },
+        "description": "Actions to apply, as a JSON array."
+      },
+      "MacroApplyResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "description": "Localised confirmation, or the partial-application notice on 207." }
+        }
+      },
+      "InboxDetailAlias": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string" },
+          "verification_status": { "type": "string" },
+          "verified_at": { "type": "string", "format": "date-time", "description": "Present once verified." }
+        }
+      },
+      "InboxDetail": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "uuid": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "name": { "type": "string" },
+          "channel": { "type": "string", "description": "Channel identifier, e.g. email or livechat. The docs spec lists only those two; the code also runs a WhatsApp channel." },
+          "enabled": { "type": "boolean" },
+          "csat_enabled": { "type": "boolean" },
+          "prompt_tags_on_reply": { "type": "boolean" },
+          "reopen_window_hours": { "type": "integer" },
+          "from": { "type": "string" },
+          "aliases": { "type": "array", "items": { "$ref": "#/components/schemas/InboxDetailAlias" } },
+          "from_name_template": { "type": "string" },
+          "config": { "type": "object", "description": "Channel configuration. Passwords, OAuth tokens and client secrets are masked." },
+          "secret": { "type": "string", "nullable": true, "description": "Livechat secret, masked when set." },
+          "linked_email_inbox_id": { "type": "integer", "nullable": true },
+          "webhook_url": { "type": "string", "description": "WhatsApp inboxes only: URL to paste into Meta's webhook configuration." },
+          "token_invalid": { "type": "boolean", "description": "Present and true when Meta recently rejected the inbox's access token." }
+        }
+      },
+      "InboxDetailResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/InboxDetail" }
+        }
+      }
+    }
+  }
+}

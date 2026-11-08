@@ -66,20 +66,50 @@ export function getApiSecret(): string {
   return process.env.LIBREDESK_API_SECRET || "";
 }
 
-export function loadSpec(): OpenAPISpec {
-  const candidates = [
-    join(__dirname, "openapi.json"),
-    join(__dirname, "..", "src", "openapi.json"),
-  ];
+function readJsonFile(name: string): OpenAPISpec {
+  const candidates = [join(__dirname, name), join(__dirname, "..", "src", name)];
   for (const p of candidates) {
     try {
-      const raw = readFileSync(p, "utf-8");
-      return JSON.parse(raw) as OpenAPISpec;
+      return JSON.parse(readFileSync(p, "utf-8")) as OpenAPISpec;
     } catch {
       // try next
     }
   }
-  throw new Error("Unable to locate bundled openapi.json");
+  throw new Error(`Unable to locate bundled ${name}`);
+}
+
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete"];
+
+// Adds the overlay's operations and schemas to the base spec. An overlay may only add: a
+// method+path, an operationId or a schema name that already exists in the base is an error.
+export function mergeOverlay(base: OpenAPISpec, overlay: OpenAPISpec): OpenAPISpec {
+  const paths: OpenAPISpec["paths"] = {};
+  const operationIds = new Set<string>();
+  for (const [p, methods] of Object.entries(base.paths)) {
+    paths[p] = { ...methods };
+    for (const [m, op] of Object.entries(methods)) {
+      if (HTTP_METHODS.includes(m) && op.operationId) operationIds.add(op.operationId);
+    }
+  }
+  for (const [p, methods] of Object.entries(overlay.paths ?? {})) {
+    for (const [m, op] of Object.entries(methods)) {
+      if (!HTTP_METHODS.includes(m)) continue;
+      if (paths[p]?.[m]) throw new Error(`Overlay operation ${m.toUpperCase()} ${p} already exists in the base spec`);
+      if (operationIds.has(op.operationId)) throw new Error(`Overlay operationId ${op.operationId} already exists in the base spec`);
+      operationIds.add(op.operationId);
+      paths[p] = { ...(paths[p] ?? {}), [m]: op };
+    }
+  }
+  const schemas: Record<string, JsonSchema> = { ...(base.components?.schemas ?? {}) };
+  for (const [name, schema] of Object.entries(overlay.components?.schemas ?? {})) {
+    if (name in schemas) throw new Error(`Overlay schema ${name} already exists in the base spec`);
+    schemas[name] = schema;
+  }
+  return { ...base, paths, components: { ...(base.components ?? {}), schemas } };
+}
+
+export function loadSpec(): OpenAPISpec {
+  return mergeOverlay(readJsonFile("openapi.json"), readJsonFile("openapi.overlay.json"));
 }
 
 export function resolveRef(spec: OpenAPISpec, ref: string): JsonSchema {
@@ -133,7 +163,7 @@ export function buildTools(spec: OpenAPISpec): ToolDef[] {
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const [method, op] of Object.entries(methods)) {
       const lower = method.toLowerCase();
-      if (!["get", "post", "put", "patch", "delete"].includes(lower)) continue;
+      if (!HTTP_METHODS.includes(lower)) continue;
 
       const name = toolNameFromOperationId(op.operationId);
       const properties: Record<string, JsonSchema> = {};
@@ -303,18 +333,24 @@ export async function callOperation(
       }
       body = form;
     } else {
-      const bodyObj: Record<string, unknown> = {};
-      if ("body" in args && typeof args.body === "object" && args.body !== null) {
-        Object.assign(bodyObj, args.body as Record<string, unknown>);
-      }
-      for (const [k, v] of Object.entries(args)) {
-        if (usedKeys.has(k) || k === "body") continue;
-        const realKey = tool.bodyKeyMap.get(k) ?? k;
-        bodyObj[realKey] = v;
-      }
-      if (Object.keys(bodyObj).length > 0) {
-        body = JSON.stringify(bodyObj);
+      if (Array.isArray(args.body)) {
+        // Array-typed request body (e.g. macro actions): send it as-is, never merged into an object.
+        body = JSON.stringify(args.body);
         headers["Content-Type"] = tool.bodyContentType || "application/json";
+      } else {
+        const bodyObj: Record<string, unknown> = {};
+        if ("body" in args && typeof args.body === "object" && args.body !== null) {
+          Object.assign(bodyObj, args.body as Record<string, unknown>);
+        }
+        for (const [k, v] of Object.entries(args)) {
+          if (usedKeys.has(k) || k === "body") continue;
+          const realKey = tool.bodyKeyMap.get(k) ?? k;
+          bodyObj[realKey] = v;
+        }
+        if (Object.keys(bodyObj).length > 0) {
+          body = JSON.stringify(bodyObj);
+          headers["Content-Type"] = tool.bodyContentType || "application/json";
+        }
       }
     }
   }
