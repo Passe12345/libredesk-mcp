@@ -2,13 +2,13 @@
 
 ## Project overview
 
-`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json). ~54 endpoints become MCP tools.
+`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json). One MCP tool is generated per spec operation (the count is logged at startup).
 
 - **Language**: TypeScript (ESM — `"type": "module"` in package.json)
 - **Runtime**: Node.js ≥ 18
 - **MCP SDK**: `@modelcontextprotocol/sdk` v1
 - **Transport**: stdio (JSON-RPC over stdin/stdout)
-- **Single source file**: all logic lives in `src/index.ts` (~390 lines). Key functions are exported for testability; `main()` is guarded to only run when executed directly (not when imported).
+- **Single source file**: all logic lives in `src/index.ts` (~410 lines). Key functions are exported for testability; `main()` is guarded to only run when executed directly (not when imported).
 
 ## Essential commands
 
@@ -18,17 +18,17 @@ npm run build        # tsc → dist/ + copy openapi.json into dist/
 npm start            # run compiled output (node dist/index.js)
 npm test             # run vitest unit tests
 npm run test:watch   # vitest in watch mode
-npm run fetch-spec   # update bundled OpenAPI spec from upstream
+npm run fetch-spec   # update bundled OpenAPI spec from upstream (records date/hash in docs/SPEC_SOURCE.md)
 ```
 
-There is a **test suite** (vitest, 38 tests) and **CI** (GitHub Actions with build, test, and Docker integration). There is **no linter**.
+There is a **test suite** (vitest) and **CI** (GitHub Actions with build, test, and Docker integration). There is **no linter**.
 
 ## Architecture
 
 ```
 src/
 ├── index.ts       # Everything: spec loader, tool builder, MCP server, HTTP client
-└── openapi.json   # Bundled copy of Libredesk's OpenAPI 3.0 spec (~4800 lines)
+└── openapi.json   # Bundled copy of Libredesk's OpenAPI 3.0 spec (see docs/SPEC_SOURCE.md)
 ```
 
 ### Startup flow
@@ -145,7 +145,7 @@ LIBREDESK_API_SECRET=... \
 node dist/index.js
 ```
 
-The server logs `[libredesk-mcp] ready — 54 tools loaded against http://localhost:9000` on successful startup.
+The server logs `[libredesk-mcp] ready — <N> tools loaded against http://localhost:9000` on successful startup.
 
 ## Updating the OpenAPI spec
 

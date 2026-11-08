@@ -2,11 +2,13 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for [Libredesk](https://libredesk.io) — the open-source omnichannel customer support desk.
 
-Exposes the entire Libredesk REST API (54 endpoints) as MCP tools, generated dynamically from the official OpenAPI spec.
+> **Fork of [metanmai/libredesk-mcp](https://github.com/metanmai/libredesk-mcp) (MIT).** The upstream history and the MIT `LICENSE` are kept. This fork refreshes the bundled spec to the current Libredesk API (v2.9.x) and keeps a drift check against Libredesk's routes.
+
+Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup).
 
 ## Tools
 
-All Libredesk REST endpoints become tools (54 total), organized by API tag:
+All Libredesk REST operations of the bundled spec become tools. The list below is the original v0.1.0 set, kept as an overview; the bundled spec now carries more (reports, custom attributes, inboxes, help-center, mark-unread, mentioned, page-visits, transcript, paginated search, ...). `update_ai_provider` no longer exists upstream.
 
 - **Conversations** — `create_conversation`, `get_all_conversations`, `get_assigned_conversations`, `get_unassigned_conversations`, `get_conversation`, `get_messages`, `get_message`, `send_message`, `retry_message`, `get_conversation_participants`, `update_conversation_priority`, `update_conversation_status`, `update_conversationtags`, `update_user_assignee`, `remove_user_assignee`, `update_team_assignee`, `remove_team_assignee`, `update_conversation_assignee_last_seen`, `get_view_conversations`, `get_team_unassigned_conversations`
 - **Contacts** — `get_contacts`, `get_contact`, `update_contact`, `block_contact`, `get_contact_notes`, `create_contact_note`, `delete_contact_note`

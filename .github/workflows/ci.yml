@@ -149,8 +149,11 @@ jobs:
             const resp = await send('tools/list');
             const tools = resp.result.tools;
 
-            if (tools.length !== 54) {
-              console.error('Expected 54 tools, got', tools.length);
+            const raw = JSON.parse(require('fs').readFileSync('dist/openapi.json', 'utf8'));
+            const expected = Object.values(raw.paths).reduce(
+              (n, methods) => n + Object.keys(methods).filter((m) => ['get', 'post', 'put', 'patch', 'delete'].includes(m)).length, 0);
+            if (tools.length !== expected) {
+              console.error('Expected', expected, 'tools, got', tools.length);
               process.exit(1);
             }
 

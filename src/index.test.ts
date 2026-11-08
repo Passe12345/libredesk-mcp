@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
+  loadSpec,
   resolveRef,
   dereference,
   toolNameFromOperationId,
@@ -461,5 +463,57 @@ describe("tool name uniqueness", () => {
     const tools = buildTools(minimalSpec);
     const names = tools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+// ============================================================
+// Bundled spec
+// ============================================================
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete"];
+
+function countOperations(paths: Record<string, Record<string, unknown>>): number {
+  let n = 0;
+  for (const methods of Object.values(paths)) {
+    for (const m of Object.keys(methods)) if (HTTP_METHODS.includes(m)) n++;
+  }
+  return n;
+}
+
+describe("bundled spec", () => {
+  const raw = JSON.parse(readFileSync(new URL("./openapi.json", import.meta.url), "utf-8")) as OpenAPISpec;
+  const tools = buildTools(loadSpec());
+
+  it("registers one tool per operation of the spec (count derived, not hard-coded)", () => {
+    expect(tools.length).toBe(countOperations(raw.paths));
+    expect(tools.length).toBeGreaterThan(0);
+  });
+
+  it("gives every tool a unique name within the 60-character limit", () => {
+    const names = tools.map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const n of names) expect(n.length).toBeLessThanOrEqual(60);
+  });
+
+  it("gives every operation an operationId", () => {
+    for (const [path, methods] of Object.entries(raw.paths)) {
+      for (const [m, op] of Object.entries(methods)) {
+        if (HTTP_METHODS.includes(m)) expect(op.operationId, `${m} ${path}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("no longer carries the removed PUT /api/v1/ai/provider operation", () => {
+    expect(tools.some((t) => t.method === "put" && t.path === "/api/v1/ai/provider")).toBe(false);
+  });
+
+  it("describes POST /api/v1/conversations with the current optional fields", () => {
+    const tool = tools.find((t) => t.method === "post" && t.path === "/api/v1/conversations")!;
+    const props = Object.keys(tool.inputSchema.properties as Record<string, unknown>);
+    for (const f of ["reuse_contact", "send_from", "cc", "bcc", "custom_attributes", "source_id", "external_user_id"]) {
+      expect(props).toContain(f);
+    }
+    const required = tool.inputSchema.required as string[];
+    expect(required).not.toContain("subject");
+    expect(required).not.toContain("last_name");
   });
 });

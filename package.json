@@ -16,7 +16,7 @@
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fetch-spec": "node -e \"fetch('https://docs.libredesk.io/api-reference/openapi.json').then(r=>r.text()).then(d=>{require('fs').writeFileSync('src/openapi.json',d);console.log('Spec updated: '+d.length+' bytes')})\""
+    "fetch-spec": "node scripts/fetch-spec.mjs"
   },
   "keywords": [
     "mcp",
