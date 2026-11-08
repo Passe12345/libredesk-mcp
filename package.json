@@ -1,6 +1,7 @@
 {
   "name": "libredesk-mcp",
-  "version": "0.1.0",
+  "private": true,
+  "version": "0.2.0",
   "description": "Model Context Protocol server for Libredesk - the open-source customer support desk.",
   "type": "module",
   "bin": {

@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, it, expect, vi, afterEach, afterAll } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   loadSpec,
   mergeOverlay,
   callOperation,
+  selectTools,
+  resolveUploadPath,
+  getAllowWrites,
+  getUploadDir,
+  SERVER_VERSION,
   resolveRef,
   dereference,
   toolNameFromOperationId,
@@ -649,5 +656,186 @@ describe("array request body", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual(actions);
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  });
+});
+
+// ============================================================
+// Hardening: read-only by default
+// ============================================================
+describe("read-only mode", () => {
+  const all = buildTools(loadSpec());
+  const original = process.env.LIBREDESK_MCP_ALLOW_WRITES;
+  afterEach(() => {
+    if (original === undefined) delete process.env.LIBREDESK_MCP_ALLOW_WRITES;
+    else process.env.LIBREDESK_MCP_ALLOW_WRITES = original;
+  });
+
+  it("registers only GET operations when writes are not allowed", () => {
+    const tools = selectTools(all, false);
+    expect(tools.length).toBeGreaterThan(0);
+    expect(tools.length).toBeLessThan(all.length);
+    for (const t of tools) expect(t.method).toBe("get");
+    const names = new Set(tools.map((t) => t.name));
+    for (const n of ["get_conversation", "get_sidebar_counts", "get_inbox", "health_check"]) expect(names.has(n), n).toBe(true);
+    for (const n of ["send_message", "create_conversation", "apply_macro", "update_conversation_status", "delete_agent", "generate_api_key", "media_upload", "ai_completion"]) {
+      expect(names.has(n), n).toBe(false);
+    }
+  });
+
+  it("keeps every operation, in its original order, when writes are allowed", () => {
+    expect(selectTools(all, true)).toEqual(all);
+  });
+
+  it("enables writes only for the exact string 'true'", () => {
+    delete process.env.LIBREDESK_MCP_ALLOW_WRITES;
+    expect(getAllowWrites()).toBe(false);
+    for (const v of ["", "1", "yes", "TRUE", "True", " true"]) {
+      process.env.LIBREDESK_MCP_ALLOW_WRITES = v;
+      expect(getAllowWrites(), JSON.stringify(v)).toBe(false);
+    }
+    process.env.LIBREDESK_MCP_ALLOW_WRITES = "true";
+    expect(getAllowWrites()).toBe(true);
+  });
+});
+
+// ============================================================
+// Hardening: upload directory
+// ============================================================
+describe("upload directory", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "libredesk-mcp-test-")));
+  const uploads = join(root, "uploads");
+  const outside = join(root, "outside");
+  const sibling = join(root, "uploads-evil");
+  mkdirSync(uploads);
+  mkdirSync(outside);
+  mkdirSync(sibling);
+  mkdirSync(join(uploads, "sub"));
+  writeFileSync(join(uploads, "ok.txt"), "inside");
+  writeFileSync(join(uploads, "sub", "deep.txt"), "deep");
+  writeFileSync(join(outside, "secret.txt"), "secret");
+  writeFileSync(join(sibling, "x.txt"), "sibling");
+  symlinkSync(join(outside, "secret.txt"), join(uploads, "link-out.txt"));
+  symlinkSync(outside, join(uploads, "dir-link-out"));
+  symlinkSync(join(uploads, "ok.txt"), join(uploads, "link-in.txt"));
+  const original = process.env.LIBREDESK_MCP_UPLOAD_DIR;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (original === undefined) delete process.env.LIBREDESK_MCP_UPLOAD_DIR;
+    else process.env.LIBREDESK_MCP_UPLOAD_DIR = original;
+  });
+  // vitest runs this at the end of the file's tests.
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it("is disabled until LIBREDESK_MCP_UPLOAD_DIR is set", () => {
+    delete process.env.LIBREDESK_MCP_UPLOAD_DIR;
+    expect(getUploadDir()).toBe("");
+    expect(() => resolveUploadPath(join(uploads, "ok.txt"), "")).toThrow(/disabled/);
+  });
+
+  it("accepts absolute and relative paths inside the directory", () => {
+    expect(resolveUploadPath(join(uploads, "ok.txt"), uploads)).toBe(join(uploads, "ok.txt"));
+    expect(resolveUploadPath("ok.txt", uploads)).toBe(join(uploads, "ok.txt"));
+    expect(resolveUploadPath("sub/deep.txt", uploads)).toBe(join(uploads, "sub", "deep.txt"));
+  });
+
+  it("refuses paths outside the directory, however they are written", () => {
+    expect(() => resolveUploadPath(join(outside, "secret.txt"), uploads)).toThrow(/outside/);
+    expect(() => resolveUploadPath("../outside/secret.txt", uploads)).toThrow(/outside/);
+    expect(() => resolveUploadPath(join(uploads, "..", "outside", "secret.txt"), uploads)).toThrow(/outside/);
+    expect(() => resolveUploadPath("/etc/hosts", uploads)).toThrow(/outside/);
+  });
+
+  it("does not treat a sibling directory sharing the prefix as inside", () => {
+    expect(() => resolveUploadPath(join(sibling, "x.txt"), uploads)).toThrow(/outside/);
+  });
+
+  it("follows symlinks before checking: a link leading out is refused, one staying in is accepted", () => {
+    expect(() => resolveUploadPath("link-out.txt", uploads)).toThrow(/outside/);
+    expect(() => resolveUploadPath("dir-link-out/secret.txt", uploads)).toThrow(/outside/);
+    expect(resolveUploadPath("link-in.txt", uploads)).toBe(join(uploads, "ok.txt"));
+  });
+
+  it("refuses the directory itself, directories, and missing files", () => {
+    expect(() => resolveUploadPath(".", uploads)).toThrow(/outside/);
+    expect(() => resolveUploadPath("sub", uploads)).toThrow(/regular file/);
+    expect(() => resolveUploadPath("nope.txt", uploads)).toThrow(/not found/);
+  });
+
+  it("reports an unusable upload directory", () => {
+    expect(() => resolveUploadPath("ok.txt", join(root, "missing"))).toThrow(/UPLOAD_DIR/);
+  });
+
+  const mediaSpec: OpenAPISpec = {
+    paths: {
+      "/api/v1/media": {
+        post: {
+          operationId: "handleMediaUpload",
+          requestBody: {
+            required: true,
+            content: {
+              "multipart/form-data": {
+                schema: { type: "object", properties: { files: { type: "string", format: "binary" } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  it("refuses a binary field when no upload directory is configured, without calling the API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = buildTools(mediaSpec)[0];
+    await expect(callOperation(tool, { files: join(uploads, "ok.txt") }, "http://x.test", "k", "s")).rejects.toThrow(/disabled/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file outside the upload directory, without calling the API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = buildTools(mediaSpec)[0];
+    await expect(
+      callOperation(tool, { files: join(outside, "secret.txt") }, "http://x.test", "k", "s", uploads),
+    ).rejects.toThrow(/outside/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a binary field passed inside a body object too", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = buildTools(mediaSpec)[0];
+    await expect(
+      callOperation(tool, { body: { files: join(outside, "secret.txt") } }, "http://x.test", "k", "s", uploads),
+    ).rejects.toThrow(/outside/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uploads a file from inside the upload directory", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const tool = buildTools(mediaSpec)[0];
+    await callOperation(tool, { files: "link-in.txt" }, "http://x.test", "k", "s", uploads);
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    const file = (init.body as FormData).get("files") as File;
+    expect(await file.text()).toBe("inside");
+    expect(file.name).toBe("ok.txt");
+  });
+});
+
+// ============================================================
+// Packaging
+// ============================================================
+describe("package metadata", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+
+  it("is private so it cannot be published by accident", () => {
+    expect(pkg.private).toBe(true);
+  });
+
+  it("reports the package version as the server version", () => {
+    expect(SERVER_VERSION).toBe(pkg.version);
+    expect(pkg.version).toBe("0.2.0");
   });
 });

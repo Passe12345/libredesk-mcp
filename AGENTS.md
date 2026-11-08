@@ -2,7 +2,7 @@
 
 ## Project overview
 
-`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json). One MCP tool is generated per spec operation (the count is logged at startup).
+`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json) plus a hand-written overlay (`src/openapi.overlay.json`) for Libredesk v2.9.2 routes the docs spec lacks. This repository is a fork of metanmai/libredesk-mcp (MIT), `"private": true`, version 0.2.0. One MCP tool is generated per operation (87 at the time of writing: 81 docs + 6 overlay; 46 of them `GET`). The count is logged at startup. **Only `GET` tools are registered unless `LIBREDESK_MCP_ALLOW_WRITES=true`.**
 
 - **Language**: TypeScript (ESM — `"type": "module"` in package.json)
 - **Runtime**: Node.js ≥ 18
@@ -13,12 +13,13 @@
 ## Essential commands
 
 ```bash
-npm install          # install dependencies
-npm run build        # tsc → dist/ + copy openapi.json into dist/
+npm ci --ignore-scripts  # install dependencies without lifecycle scripts
+npm run build        # tsc → dist/ + copy openapi.json and openapi.overlay.json into dist/
 npm start            # run compiled output (node dist/index.js)
 npm test             # run vitest unit tests
 npm run test:watch   # vitest in watch mode
 npm run fetch-spec   # update bundled OpenAPI spec from upstream (records date/hash in docs/SPEC_SOURCE.md)
+npm run check-drift  # compare spec + overlay with Libredesk's cmd/handlers.go (latest release; `-- <tag>` to pick one; needs `gh`)
 ```
 
 There is a **test suite** (vitest) and **CI** (GitHub Actions with build, test, and Docker integration). There is **no linter**.
@@ -28,13 +29,20 @@ There is a **test suite** (vitest) and **CI** (GitHub Actions with build, test, 
 ```
 src/
 ├── index.ts       # Everything: spec loader, tool builder, MCP server, HTTP client
-└── openapi.json   # Bundled copy of Libredesk's OpenAPI 3.0 spec (see docs/SPEC_SOURCE.md)
+├── openapi.json          # Bundled copy of Libredesk's published OpenAPI spec (provenance: docs/SPEC_SOURCE.md). Never hand-edit.
+└── openapi.overlay.json  # Hand-written operations for v2.9.2 routes the docs spec lacks; each has x-source (file + handler)
+scripts/
+├── fetch-spec.mjs        # npm run fetch-spec
+└── check-drift.mjs       # npm run check-drift (out-of-scope prefix list lives here)
+docs/
+├── SPEC_SOURCE.md        # where/when the bundled spec was fetched, SHA-256
+└── SPEC_NOTES.md         # overlay contents, routes left out, docs-vs-code discrepancies
 ```
 
 ### Startup flow
 
-1. `main()` loads `openapi.json` from `dist/` (or falls back to `src/` during dev via `tsx`)
-2. `buildTools()` walks every path+method in the spec, flattens parameters and request bodies into MCP tool schemas
+1. `main()` loads `openapi.json` and `openapi.overlay.json` from `dist/` (falling back to `src/`) and merges them (`mergeOverlay` refuses to redefine an existing method+path, operationId or schema name)
+2. `buildTools()` walks every path+method in the merged spec, flattens parameters and request bodies into MCP tool schemas; `selectTools()` then keeps only `GET` tools unless writes are allowed
 3. Tools are registered via `ListToolsRequestSchema` / `CallToolRequestSchema` handlers on the MCP `Server`
 4. Server connects via `StdioServerTransport` and logs readiness to stderr
 
@@ -61,8 +69,8 @@ Custom, inline dereferencing. `resolveRef` walks the `#/components/schemas/...` 
 2. Builds query string from query params (supports array values)
 3. Constructs the auth header: `Authorization: token <api_key>:<api_secret>` (Libredesk also supports `Basic` base64 auth; both work).
 4. Assembles the body:
-   - **multipart/form-data**: creates a `FormData` object. Binary fields (`format: "binary"`) expect a local file path string — the server reads the file with `readFileSync` and appends a `Blob`. JSON objects/arrays in multipart are serialized with `JSON.stringify`.
-   - **JSON**: collects all remaining args into a plain object and `JSON.stringify`s it. Fields that had a `body_` prefix have it stripped.
+   - **multipart/form-data**: creates a `FormData` object. Binary fields (`format: "binary"`) expect a file path string; `resolveUploadPath` refuses it unless `LIBREDESK_MCP_UPLOAD_DIR` is set and the real path (after symlinks) is a regular file inside it, then the file is read and appended as a `Blob`. JSON objects/arrays in multipart are serialized with `JSON.stringify`.
+   - **JSON**: collects all remaining args into a plain object and `JSON.stringify`s it. Fields that had a `body_` prefix have it stripped. An array-typed body (macro apply) arrives as `args.body` and is sent as-is.
 5. Sends the `fetch` request and returns `HTTP <status> <statusText> — <METHOD> <url>` followed by the response body (pretty-printed JSON if parseable, raw text otherwise).
 
 ## Environment variables
@@ -72,6 +80,8 @@ Custom, inline dereferencing. `resolveRef` walks the `#/components/schemas/...` 
 | `LIBREDESK_URL` | yes | Base URL, no trailing slash |
 | `LIBREDESK_API_KEY` | yes | Agent API key |
 | `LIBREDESK_API_SECRET` | yes | Agent API secret |
+| `LIBREDESK_MCP_ALLOW_WRITES` | no | Exactly `true` registers write (non-GET) tools; anything else keeps the server read-only |
+| `LIBREDESK_MCP_UPLOAD_DIR` | no | Directory uploads may read from; unset = file-path fields are refused |
 
 Missing env vars log a warning to stderr but do **not** prevent startup — tools that require auth will just get 401 errors from Libredesk.
 
@@ -91,7 +101,11 @@ When a request body field name collides with a path/query parameter, the MCP too
 
 ### Binary file uploads expect a path string, not file content
 
-The MCP tool schema describes binary fields as `type: "string"` with a description telling the user to pass a local file path. The actual file read (`readFileSync`) happens inside `callOperation`, not at tool-definition time. This means the file must exist at execution time — the MCP client doesn't get to stream content.
+The MCP tool schema describes binary fields as `type: "string"` with a description telling the model to pass a file path inside `LIBREDESK_MCP_UPLOAD_DIR`. The actual file read happens inside `callOperation` after `resolveUploadPath` has checked the real path, not at tool-definition time. Never reintroduce a bare `readFileSync(value)`: that let the model read any local file. Uploads are writes, so they also need `LIBREDESK_MCP_ALLOW_WRITES=true`.
+
+### Read-only filtering happens at registration
+
+`selectTools` drops non-GET tools before the `tools/list` and `tools/call` handlers are built, so a write tool is an "Unknown tool" in read-only mode. `callOperation` itself does not check the mode.
 
 ### No trailing-slash normalization on base URL
 
@@ -110,6 +124,10 @@ Libredesk supports two auth formats: `token api_key:api_secret` and `Basic base6
 Some Libredesk endpoints (e.g., `create_agent`) may return two concatenated JSON error responses in a single 500 body when multiple errors occur. The MCP server forwards the raw response text as-is, which means the concatenated JSON won't be pretty-printed. This is a Libredesk API issue, not an MCP server bug.
 
 `src/openapi.json` is a manual copy from `https://docs.libredesk.io/api-reference/openapi.json`. It is not auto-generated during build. Updating it requires a manual curl+copy. The build script only copies it into `dist/`.
+
+### The overlay can only add
+
+`mergeOverlay` throws on a duplicate. When the docs spec catches up with a route the overlay carries, `npm run check-drift` fails and says to remove it from the overlay. Overlay shapes come from the Go sources at v2.9.2; when the code and the docs disagree the code wins, and the disagreement is recorded in `docs/SPEC_NOTES.md`.
 
 ### No versioning or compatibility layer
 
@@ -145,23 +163,17 @@ LIBREDESK_API_SECRET=... \
 node dist/index.js
 ```
 
-The server logs `[libredesk-mcp] ready — <N> tools loaded against http://localhost:9000` on successful startup.
+The server logs `[libredesk-mcp] ready — <N> tools loaded (read-only; uploads disabled) against http://localhost:9000` on successful startup. Add `LIBREDESK_MCP_ALLOW_WRITES=true` to exercise the write tools.
 
 ## Updating the OpenAPI spec
 
 ```bash
-npm run fetch-spec    # fetches latest from docs.libredesk.io
-npm run build         # rebuild with updated spec
+npm run fetch-spec    # fetches latest from docs.libredesk.io, rewrites docs/SPEC_SOURCE.md
+npm run build && npm test
+npm run check-drift   # fails if an operation lost its route or an overlay operation is now in the docs spec
 ```
 
-Or manually:
-
-```bash
-curl -sL https://docs.libredesk.io/api-reference/openapi.json > src/openapi.json
-npm run build
-```
-
-Then verify the tool count hasn't dropped unexpectedly. The server logs the count on startup.
+Commit `src/openapi.json` and `docs/SPEC_SOURCE.md` together. The tests derive the expected tool count from the spec and overlay, so there is no number to update; the integration job in CI does the same (GET operations only, because it runs read-only).
 
 ## MCP client configuration
 
@@ -183,4 +195,4 @@ This server is typically run as a child process by an MCP host:
 }
 ```
 
-Or via `npx` once published: `npx -y libredesk-mcp`.
+Run a pinned local build (`npm ci --ignore-scripts && npm run build`). Do not use `npx -y`: the package is private and never published, and `npx -y` would run whatever the registry serves.

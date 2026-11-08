@@ -150,7 +150,7 @@ jobs:
             const tools = resp.result.tools;
 
             const count = (f) => Object.values(JSON.parse(require('fs').readFileSync(f, 'utf8')).paths).reduce(
-              (n, methods) => n + Object.keys(methods).filter((m) => ['get', 'post', 'put', 'patch', 'delete'].includes(m)).length, 0);
+              (n, methods) => n + Object.keys(methods).filter((m) => m === 'get').length, 0);
             const expected = count('dist/openapi.json') + count('dist/openapi.overlay.json');
             if (tools.length !== expected) {
               console.error('Expected', expected, 'tools, got', tools.length);

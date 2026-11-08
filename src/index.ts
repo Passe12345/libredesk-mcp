@@ -5,9 +5,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -64,6 +64,52 @@ export function getApiKey(): string {
 
 export function getApiSecret(): string {
   return process.env.LIBREDESK_API_SECRET || "";
+}
+
+export const SERVER_VERSION = "0.2.0";
+
+// Writes (anything but GET) are registered only when this is exactly "true".
+export function getAllowWrites(): boolean {
+  return process.env.LIBREDESK_MCP_ALLOW_WRITES === "true";
+}
+
+// Directory file uploads may read from; uploads are refused while it is unset.
+export function getUploadDir(): string {
+  return process.env.LIBREDESK_MCP_UPLOAD_DIR || "";
+}
+
+export function selectTools(tools: ToolDef[], allowWrites: boolean): ToolDef[] {
+  return allowWrites ? tools : tools.filter((t) => t.method === "get");
+}
+
+// Resolves a model-supplied path for an upload. The path (after following symlinks) must be a
+// regular file inside uploadDir; relative paths are taken relative to uploadDir.
+export function resolveUploadPath(filePath: string, uploadDir: string): string {
+  if (!uploadDir) {
+    throw new Error(
+      "File uploads are disabled: set LIBREDESK_MCP_UPLOAD_DIR to the directory uploads may be read from.",
+    );
+  }
+  let realDir: string;
+  try {
+    realDir = realpathSync(uploadDir);
+  } catch {
+    throw new Error("LIBREDESK_MCP_UPLOAD_DIR does not exist or is not readable.");
+  }
+  let realFile: string;
+  try {
+    realFile = realpathSync(resolve(realDir, filePath));
+  } catch {
+    throw new Error(`Upload file not found inside the upload directory: ${filePath}`);
+  }
+  const rel = relative(realDir, realFile);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error("Upload refused: the file is outside LIBREDESK_MCP_UPLOAD_DIR.");
+  }
+  if (!statSync(realFile).isFile()) {
+    throw new Error("Upload refused: the path is not a regular file.");
+  }
+  return realFile;
 }
 
 function readJsonFile(name: string): OpenAPISpec {
@@ -215,7 +261,7 @@ export function buildTools(spec: OpenAPISpec): ToolDef[] {
               const annotated: JsonSchema = isBinary
                 ? {
                     type: "string",
-                    description: `(body, file) ${fieldSchema.description || ""} — pass an absolute local file path; the server will upload its contents.`,
+                    description: `(body, file) ${fieldSchema.description || ""} — pass a file path inside the directory set by LIBREDESK_MCP_UPLOAD_DIR (uploads are refused while it is unset); the server will upload its contents.`,
                   }
                 : { ...fieldSchema, description: `(body) ${fieldSchema.description || ""}` };
 
@@ -273,6 +319,7 @@ export async function callOperation(
   baseUrl: string,
   apiKey: string,
   apiSecret: string,
+  uploadDir = "",
 ): Promise<string> {
   let url = `${baseUrl}${tool.path}`;
   for (const p of tool.pathParams) {
@@ -314,8 +361,9 @@ export async function callOperation(
           if (typeof value !== "string") {
             throw new Error(`Binary field '${realKey}' must be a string file path; got ${typeof value}.`);
           }
-          const data = readFileSync(value);
-          form.append(realKey, new Blob([new Uint8Array(data)]), basename(value));
+          const realPath = resolveUploadPath(value, uploadDir);
+          const data = readFileSync(realPath);
+          form.append(realKey, new Blob([new Uint8Array(data)]), basename(realPath));
         } else if (Array.isArray(value)) {
           for (const v of value) form.append(realKey, typeof v === "object" ? JSON.stringify(v) : String(v));
         } else if (typeof value === "object") {
@@ -376,11 +424,13 @@ export async function callOperation(
 
 async function main() {
   const spec = loadSpec();
-  const tools = buildTools(spec);
+  const allowWrites = getAllowWrites();
+  const tools = selectTools(buildTools(spec), allowWrites);
+  const uploadDir = getUploadDir();
   const byName = new Map(tools.map((t) => [t.name, t]));
 
   const server = new Server(
-    { name: "libredesk-mcp", version: "0.1.0" },
+    { name: "libredesk-mcp", version: SERVER_VERSION },
     { capabilities: { tools: {} } },
   );
 
@@ -422,6 +472,7 @@ async function main() {
         libredeskUrl,
         apiKey,
         apiSecret,
+        uploadDir,
       );
       return { content: [{ type: "text", text: result }] };
     } catch (err) {
@@ -432,7 +483,9 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[libredesk-mcp] ready — ${tools.length} tools loaded against ${libredeskUrl || "<unset>"}`);
+  console.error(
+    `[libredesk-mcp] ready — ${tools.length} tools loaded (${allowWrites ? "writes enabled" : "read-only"}; uploads ${uploadDir ? "limited to " + uploadDir : "disabled"}) against ${libredeskUrl || "<unset>"}`,
+  );
 }
 
 // Run the server if this file is executed directly (not imported for testing).
