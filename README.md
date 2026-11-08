@@ -31,11 +31,21 @@ One tool per operation, grouped by API tag. Tools marked \* are writes: they do 
 
 ## Setup
 
-### 1. Get a Libredesk API key
+### 1. Create an agent and an API key in Libredesk
 
-Log in to your Libredesk instance as an agent, open your profile, and generate an API key. You'll get an `api_key` and `api_secret`.
+Create a dedicated agent for the MCP (do not reuse a person's key or another integration's key), give it a role limited to what you need, then generate its API key: you get an `api_key` and an `api_secret`.
 
-### 2. Install a pinned local copy and add it to Claude Code
+Suggested role for reading and triaging tickets (Admin > Teammates > Roles). Tick nothing in the **Admin** section:
+
+| Section | Permissions |
+|---|---|
+| Conversation | View conversation, View all conversations, View all unassigned conversations, View conversation messages |
+| Conversation (to act on tickets) | Send private notes, Change conversation status, Change conversation priority, Add or remove conversation tags, Assign conversations to users / teams |
+| Contact | View all contacts, View contact details, View contact notes |
+
+For read-only use keep only the "View" permissions and start the server with `LIBREDESK_MCP_READ_ONLY=true`. Do not grant "Send messages in conversations" unless the model should be able to reply to customers. Tools that need an Admin permission (agents, teams, inbox details, macro management, reports, tags and statuses management) answer 403 with such a role; the role, not this server, is what limits the key.
+
+### 2. Install a pinned local copy
 
 Run a pinned local copy rather than `npx -y`: `npx -y` executes whatever the registry serves at that moment, and this fork is `"private": true` and never published. Clone it, install without lifecycle scripts, build once, and point your MCP host at the built file:
 
@@ -45,41 +55,72 @@ npm ci --ignore-scripts
 npm run build
 ```
 
-Then register the built file:
+Note the absolute path of `dist/index.js` (`pwd` inside the clone, then append `/dist/index.js`). Rebuild with `npm run build` after every change: the host runs `dist/index.js`, not the sources.
+
+### 3. Claude Code (CLI)
+
+Register the built file at **user** scope, so the key lives in `~/.claude.json` and never in a repository (`--scope project` would write it into a versioned `.mcp.json`):
 
 ```bash
 claude mcp add-json libredesk --scope user '{
   "command": "node",
   "args": ["/absolute/path/to/libredesk-mcp/dist/index.js"],
   "env": {
-    "LIBREDESK_URL": "http://localhost:9000",
-    "LIBREDESK_API_KEY": "ak_...",
-    "LIBREDESK_API_SECRET": "as_..."
+    "LIBREDESK_URL": "https://libredesk.example.com",
+    "LIBREDESK_API_KEY": "<api key of the MCP agent>",
+    "LIBREDESK_API_SECRET": "<api secret of the MCP agent>"
   }
 }'
 ```
 
-Restart your Claude Code session; you should see `libredesk` as `✓ Connected` in `claude mcp list`.
+Add `"LIBREDESK_MCP_READ_ONLY": "true"` to `env` for the read-only tool set. Restart your Claude Code session, then check:
 
-### 3. Other MCP clients
+```bash
+claude mcp list              # libredesk should show as ✓ Connected
+claude mcp get libredesk     # shows the stored configuration
+claude mcp remove libredesk --scope user
+```
 
-Add to your MCP host's config (Cursor, Claude Desktop, etc.):
+To rotate the key, regenerate it on the agent in Libredesk, remove the server and add it again.
+
+### 4. Claude Desktop
+
+Edit the Claude Desktop configuration file (in the app: Settings > Developer > Edit Config), or open it directly:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add the server under `mcpServers` (keep any servers already there):
 
 ```json
 {
   "mcpServers": {
     "libredesk": {
-      "command": "node",
+      "command": "/absolute/path/to/node",
       "args": ["/absolute/path/to/libredesk-mcp/dist/index.js"],
       "env": {
-        "LIBREDESK_URL": "http://localhost:9000",
-        "LIBREDESK_API_KEY": "ak_...",
-        "LIBREDESK_API_SECRET": "as_..."
+        "LIBREDESK_URL": "https://libredesk.example.com",
+        "LIBREDESK_API_KEY": "<api key of the MCP agent>",
+        "LIBREDESK_API_SECRET": "<api secret of the MCP agent>"
       }
     }
   }
 }
 ```
+
+- Use the **absolute path of `node`** (`which node` on macOS, `where node` on Windows). A desktop app does not inherit your shell's `PATH`, so a bare `node` often fails, notably with `nvm`.
+- On Windows, double the backslashes in JSON paths (`C:\\Users\\me\\libredesk-mcp\\dist\\index.js`).
+- Quit Claude Desktop completely (Cmd+Q on macOS, not just closing the window) and reopen it. The Libredesk tools then appear in the tools menu of a conversation.
+- If the server does not start, read the log of the MCP server (macOS: `~/Library/Logs/Claude/mcp-server-libredesk.log`). The server prints a readiness line on startup, e.g. `ready — 91 tools loaded (writes enabled; uploads disabled)`.
+- The config file holds the key in clear text: keep it out of backups and screenshots you share.
+
+### 5. Other MCP clients
+
+Any host that starts a stdio MCP server accepts the same `command` / `args` / `env` block as in the Claude Desktop example (Cursor, Windsurf, etc.).
+
+### Network access
+
+The server calls `LIBREDESK_URL` directly from the machine that runs it. If your instance sits behind an IP allow-list, a firewall or a CDN rule, that machine must be allowed in, otherwise every tool answers with an HTTP error such as 403.
 
 ## Environment variables
 
