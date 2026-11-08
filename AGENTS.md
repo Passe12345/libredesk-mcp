@@ -2,7 +2,7 @@
 
 ## Project overview
 
-`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json) plus a hand-written overlay (`src/openapi.overlay.json`) for Libredesk v2.9.2 routes the docs spec lacks. This repository is a fork of metanmai/libredesk-mcp (MIT), `"private": true`, version 0.2.0. One MCP tool is generated per operation (87 at the time of writing: 81 docs + 6 overlay; 46 of them `GET`). The count is logged at startup. **Write tools are registered unless `LIBREDESK_MCP_READ_ONLY=true`, which keeps only `GET` tools.**
+`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json) plus a hand-written overlay (`src/openapi.overlay.json`) for Libredesk v2.9.2 routes the docs spec lacks. This repository is a fork of metanmai/libredesk-mcp (MIT), `"private": true`, version 0.2.0. One MCP tool is generated per operation (91 at the time of writing: 81 docs + 10 overlay; 50 of them `GET`). The count is logged at startup. **Write tools are registered unless `LIBREDESK_MCP_READ_ONLY=true`, which keeps only `GET` tools.**
 
 - **Language**: TypeScript (ESM — `"type": "module"` in package.json)
 - **Runtime**: Node.js ≥ 18

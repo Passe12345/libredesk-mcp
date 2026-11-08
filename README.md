@@ -6,7 +6,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Libredes
 
 Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup). **Writes are enabled by default**; set `LIBREDESK_MCP_READ_ONLY=true` to register only `GET` operations (see [Hardening](#hardening)).
 
-Currently 87 operations: 81 from the published docs spec plus 6 from a hand-written overlay for v2.9.2 routes the docs lack (46 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
+Currently 91 operations: 81 from the published docs spec plus 10 from a hand-written overlay for v2.9.2 routes the docs lack (50 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
 
 ## Tools
 
@@ -21,6 +21,7 @@ One tool per operation, grouped by API tag. Tools marked \* are writes: they do 
 - **Health** — `health_check`
 - **Help center** — `get_public_help_center_article`, `public_help_center_search`, `get_public_help_center_tree`
 - **Inboxes** — `get_inboxes`, `get_inbox`
+- **Macros** — `get_macros`, `get_macros_compact`, `search_macros`, `get_macro` (the macro to pass to `apply_macro`, listed under Conversations)
 - **Media** — `media_upload` \*, `serve_media`
 - **Reports** — `overview_charts`, `overview_counts`, `overview_csat`, `overview_message_volume`, `overview_sla`, `overview_tag_distribution`
 - **Search** — `search_contacts`, `search_conversations`, `search_messages`, `paginated_search_conversations`, `paginated_search_messages`

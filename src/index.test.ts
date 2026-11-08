@@ -585,9 +585,30 @@ describe("overlay", () => {
       "delete_conversation_draft",
       "apply_macro",
       "get_inbox",
+      "get_macros",
+      "get_macros_compact",
+      "search_macros",
+      "get_macro",
     ]) {
       expect(byName.has(n), n).toBe(true);
     }
+  });
+
+  it("models the macro reads: path id, query filters, GET only", () => {
+    for (const n of ["get_macros", "get_macros_compact", "search_macros", "get_macro"]) {
+      expect(byName.get(n)!.method, n).toBe("get");
+    }
+    expect(byName.get("get_macro")!.pathParams).toEqual(["id"]);
+    expect(byName.get("get_macros_compact")!.queryParams.map((q) => q.name)).toEqual(["q", "page", "page_size"]);
+    expect(byName.get("search_macros")!.queryParams.map((q) => q.name)).toEqual(["q", "view"]);
+    const view = (byName.get("search_macros")!.inputSchema.properties as Record<string, Record<string, unknown>>).view;
+    expect(view.enum).toEqual(["replying", "starting_conversation", "adding_private_note"]);
+  });
+
+  it("keeps the macro reads in read-only mode", () => {
+    const names = new Set(selectTools(tools, false).map((t) => t.name));
+    for (const n of ["get_macros", "get_macros_compact", "search_macros", "get_macro"]) expect(names.has(n), n).toBe(true);
+    expect(names.has("apply_macro")).toBe(false);
   });
 
   it("models the macro body as a required array", () => {

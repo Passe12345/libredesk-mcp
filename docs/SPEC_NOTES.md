@@ -5,7 +5,7 @@ plus a hand-written overlay (`src/openapi.overlay.json`) for helpdesk routes the
 Reference version: Libredesk **v2.9.2** (route table `cmd/handlers.go`, handlers in `cmd/*.go`,
 models in `internal/*/models`). The code wins over the docs when they disagree.
 
-## Overlay operations (6)
+## Overlay operations (10)
 
 Each carries `x-source` (file + handler at v2.9.2) and a request/response shape read from the Go code.
 
@@ -17,6 +17,20 @@ Each carries `x-source` (file + handler at v2.9.2) and a request/response shape 
 | `DELETE /api/v1/conversations/{uuid}/draft` | `handleDeleteConversationDraft` | `cmd/draft.go` |
 | `POST /api/v1/conversations/{uuid}/macros/{id}/apply` | `handleApplyMacro` | `cmd/macro.go` |
 | `GET /api/v1/inboxes/{id}` | `handleGetInbox` | `cmd/inboxes.go` |
+| `GET /api/v1/macros` | `handleGetMacros` | `cmd/macro.go` |
+| `GET /api/v1/macros/compact` | `handleGetMacrosCompact` | `cmd/macro.go` |
+| `GET /api/v1/macros/search` | `handleSearchMacros` | `cmd/macro.go` |
+| `GET /api/v1/macros/{id}` | `handleGetMacro` | `cmd/macro.go` |
+
+Macro reads (shapes from `internal/macro/models` and `internal/macro/queries.sql`): `/macros` and
+`/macros/{id}` return the full `Macro` (with `message_content`); `/macros/compact` and `/macros/search`
+return `MacroCompact` (`has_message_content` instead of the text). `/macros/compact` needs
+`macros:manage` and takes `q`, `page`, `page_size` (0 or absent: every match, at most 500 per page);
+`/macros/search` is open to any agent, keeps only the macros that agent may apply, takes `q` and `view`
+(`replying`, `starting_conversation` or `adding_private_note`, anything else is a 400) and returns at
+most 30, most used first. `GET /macros/{id}` does not check the macro's visibility. `user_id` and
+`team_id` are serialised as strings (`json:",string"`) or null. Each action carries `display_value`
+(names resolved server-side), null when it cannot be resolved.
 
 Most routes named in the brief (mark-unread, mentioned, page-visits, transcript, conversation and
 contact custom attributes, paginated search, the six reports, contact export) are already in the
@@ -28,8 +42,8 @@ In scope but not added:
 
 - `GET /api/v1/views/{id}/count`: belongs to views, which are out of scope (the sidebar counts
   route already returns every accessible view count).
-- `GET /api/v1/macros`, `/macros/search`, `/macros/{id}`: macro reads were not in the requested list,
-  only "macros apply". The apply operation therefore needs a macro ID obtained elsewhere (the web UI).
+- Macro writes (`POST /macros`, `PUT` and `DELETE /macros/{id}`, all `macros:manage`): reads were
+  added so that `apply_macro` can find its macro ID; managing the macro library stays in the web UI.
 - `GET /api/v1/custom-attributes/{id}`, `GET /api/v1/inboxes/{id}/campaign-stats`,
   `POST /api/v1/tags/import`, `GET /api/v1/tags/import/status`: admin (`*:manage`) settings or bulk
   import, not helpdesk reads.

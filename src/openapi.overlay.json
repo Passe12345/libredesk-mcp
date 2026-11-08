@@ -127,6 +127,90 @@
         }
       }
     },
+    "/api/v1/macros": {
+      "get": {
+        "tags": ["Macros"],
+        "summary": "Get Macros",
+        "operationId": "handleGetMacros",
+        "description": "Every macro with its message content and its actions (each action carries `display_value`, the name of the team, agent, status or priority it targets). Any authenticated agent. Use `search_macros` to list only the macros the caller may apply, or `get_macros_compact` for a list without the message content.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/macro.go", "handler": "handleGetMacros" },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Macros retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroListResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/macros/compact": {
+      "get": {
+        "tags": ["Macros"],
+        "summary": "Get Macros Compact",
+        "operationId": "handleGetMacrosCompact",
+        "description": "Macros without their message content (`has_message_content` tells whether there is one), filtered by name, newest update first. Without `page_size` (or with 0) every match is returned. Requires the `macros:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/macro.go", "handler": "handleGetMacrosCompact" },
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive substring of the macro name" },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "description": "Page number, used when page_size is set" },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "maximum": 500 }, "description": "Items per page, at most 500. 0 or absent: return every match" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Macros retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroCompactListResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/macros/search": {
+      "get": {
+        "tags": ["Macros"],
+        "summary": "Search Macros",
+        "operationId": "handleSearchMacros",
+        "description": "The 30 most used macros the caller may apply (visibility all, own, or one of the caller's teams), without their message content, optionally filtered by name and by where they are offered. Any authenticated agent.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/macro.go", "handler": "handleSearchMacros" },
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive substring of the macro name" },
+          { "name": "view", "in": "query", "required": false, "schema": { "type": "string", "enum": ["replying", "starting_conversation", "adding_private_note"] }, "description": "Keep only the macros offered in this context. Any other value is a 400" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Macros retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroCompactListResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/macros/{id}": {
+      "get": {
+        "tags": ["Macros"],
+        "summary": "Get Macro",
+        "operationId": "handleGetMacro",
+        "description": "A single macro with its message content and its actions. Any authenticated agent; the macro's visibility is not checked on this route.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/macro.go", "handler": "handleGetMacro" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Macro ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Macro retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MacroResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/api/v1/inboxes/{id}": {
       "get": {
         "tags": ["Inboxes"],
@@ -234,6 +318,70 @@
         "type": "array",
         "items": { "$ref": "#/components/schemas/MacroAction" },
         "description": "Actions to apply, as a JSON array."
+      },
+      "MacroActionResponse": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "description": "Action type, e.g. assign_team, assign_user, set_status, set_priority, add_tags, set_tags, remove_tags" },
+          "value": { "type": "array", "items": { "type": "string" }, "description": "IDs (sent as strings) or tag names, as stored" },
+          "display_value": { "type": "array", "items": { "type": "string" }, "nullable": true, "description": "Names matching value (team, agent, status or priority); null when it cannot be resolved" },
+          "subject": { "type": "string", "description": "Only for the notify action" },
+          "message": { "type": "string", "description": "Only for the notify action" },
+          "recipients": { "type": "array", "items": { "type": "string" }, "description": "Only for the notify action" }
+        }
+      },
+      "Macro": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "name": { "type": "string" },
+          "actions": { "type": "array", "items": { "$ref": "#/components/schemas/MacroActionResponse" } },
+          "visibility": { "type": "string", "enum": ["all", "team", "user"], "description": "Who may apply the macro: everyone, the members of team_id, or the agent user_id" },
+          "visible_when": { "type": "array", "items": { "type": "string", "enum": ["replying", "starting_conversation", "adding_private_note"] } },
+          "message_content": { "type": "string", "description": "Reply text the macro inserts" },
+          "user_id": { "type": "string", "nullable": true, "description": "Owner agent ID as a string, null when not set" },
+          "team_id": { "type": "string", "nullable": true, "description": "Team ID as a string, null when not set" },
+          "usage_count": { "type": "integer" }
+        }
+      },
+      "MacroCompact": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "name": { "type": "string" },
+          "actions": { "type": "array", "items": { "$ref": "#/components/schemas/MacroActionResponse" } },
+          "visibility": { "type": "string", "enum": ["all", "team", "user"], "description": "Who may apply the macro: everyone, the members of team_id, or the agent user_id" },
+          "visible_when": { "type": "array", "items": { "type": "string", "enum": ["replying", "starting_conversation", "adding_private_note"] } },
+          "has_message_content": { "type": "boolean", "description": "Whether the macro inserts a reply text (the text itself is omitted from this shape)" },
+          "user_id": { "type": "string", "nullable": true, "description": "Owner agent ID as a string, null when not set" },
+          "team_id": { "type": "string", "nullable": true, "description": "Team ID as a string, null when not set" },
+          "usage_count": { "type": "integer" }
+        }
+      },
+      "MacroResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/Macro" }
+        }
+      },
+      "MacroListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Macro" } }
+        }
+      },
+      "MacroCompactListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/MacroCompact" } }
+        }
       },
       "MacroApplyResponse": {
         "type": "object",
