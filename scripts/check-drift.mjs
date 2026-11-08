@@ -39,7 +39,9 @@ export const OUT_OF_SCOPE = [
   // Views, authentication and account self-service
   "/api/v1/views/me",
   "/api/v1/views/shared",
-  "/api/v1/shared-views",
+  // Shared views: list, read and create are covered; editing and deleting stay in the web UI
+  "PUT /api/v1/shared-views",
+  "DELETE /api/v1/shared-views",
   "/api/v1/auth",
   "/api/v1/agents/import",
   "/api/v1/agents/reset-password",

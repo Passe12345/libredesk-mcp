@@ -27,6 +27,9 @@ Each carries `x-source` (file + handler at v2.9.2) and a request/response shape 
 | `POST /api/v1/automations/rules` | `handleCreateAutomationRule` | `cmd/automation.go` |
 | `GET /api/v1/automations/rules/{id}` | `handleGetAutomationRule` | `cmd/automation.go` |
 | `PUT /api/v1/automations/rules/{id}/toggle` | `handleToggleAutomationRule` | `cmd/automation.go` |
+| `GET /api/v1/shared-views` | `handleGetAllSharedViews` | `cmd/views.go` |
+| `POST /api/v1/shared-views` | `handleCreateSharedView` | `cmd/views.go` |
+| `GET /api/v1/shared-views/{id}` | `handleGetSharedView` | `cmd/views.go` |
 
 Assignee lookups (`UserCompact` in `internal/user/models`, `TeamCompact` in `internal/team/models`): both
 routes need only authentication, whereas `GET /agents` needs `users:manage` and `GET /teams` needs
@@ -57,6 +60,13 @@ behind `automations:manage`:
 - Left out (stay in the web UI): `PUT /rules/{id}` (update), `DELETE /rules/{id}`, `PUT /rules/weights`,
   `PUT /rules/execution-mode`. The condition field list in the overlay comes from the constants of
   `internal/automation/models`; I did not read the web UI, so its menu labels may differ.
+
+Shared views (`cmd/views.go`, `internal/view` at v2.9.2), behind `shared_views:manage`: `visibility` is `all` or
+`team` (with `team_id`); `filters` is a JSON value validated by `ValidateListFilters` against
+`ListFilterAllowedFields` plus the `tags` renderer. There is no subject or content field, so a view cannot
+match on text: tag the conversations (automation action `add_tags`) and filter on the tag. A tag condition
+is `contains` / `not contains` with the tag IDs as a JSON array in a string (`"[3]"`), or `set` / `not set`.
+Left out: `PUT` and `DELETE /shared-views/{id}`, personal views (`/views/me`) and `/views/shared`.
 
 Macro reads (shapes from `internal/macro/models` and `internal/macro/queries.sql`): `/macros` and
 `/macros/{id}` return the full `Macro` (with `message_content`); `/macros/compact` and `/macros/search`

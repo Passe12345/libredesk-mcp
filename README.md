@@ -26,6 +26,7 @@ One tool per operation, grouped by API tag. Tools marked \* are writes: they do 
 - **Media** — `media_upload` \*, `serve_media`
 - **Reports** — `overview_charts`, `overview_counts`, `overview_csat`, `overview_message_volume`, `overview_sla`, `overview_tag_distribution`
 - **Search** — `search_contacts`, `search_conversations`, `search_messages`, `paginated_search_conversations`, `paginated_search_messages`
+- **Views** — `get_all_shared_views`, `get_shared_view`, `create_shared_view` \* (all need the "Manage shared views" permission; editing and deleting views stay in the web UI; a view cannot filter on the subject or content, only on status, priority, assignee, team, inbox, dates, SLA and tags)
 - **Status and priority** — `get_priorities`, `get_statuses`, `create_status` \*, `delete_status` \*, `update_status` \*
 - **Tags** — `get_tags`, `create_tag` \*, `update_tag` \*, `delete_tag` \*
 - **Teams** — `get_teams_compact` (team IDs for assignment, no admin permission needed), `get_teams`, `create_team` \*, `delete_team` \*, `get_team`, `update_team` \*
