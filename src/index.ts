@@ -68,9 +68,9 @@ export function getApiSecret(): string {
 
 export const SERVER_VERSION = "0.2.0";
 
-// Writes (anything but GET) are registered only when this is exactly "true".
+// Writes (anything but GET) are registered unless LIBREDESK_MCP_READ_ONLY is exactly "true".
 export function getAllowWrites(): boolean {
-  return process.env.LIBREDESK_MCP_ALLOW_WRITES === "true";
+  return process.env.LIBREDESK_MCP_READ_ONLY !== "true";
 }
 
 // Directory file uploads may read from; uploads are refused while it is unset.

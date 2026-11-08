@@ -121,6 +121,7 @@ jobs:
               LIBREDESK_URL: 'http://localhost:9000',
               LIBREDESK_API_KEY: process.env.API_KEY,
               LIBREDESK_API_SECRET: process.env.API_SECRET,
+              LIBREDESK_MCP_READ_ONLY: 'true',
             },
             stdio: ['pipe', 'pipe', 'pipe'],
           });

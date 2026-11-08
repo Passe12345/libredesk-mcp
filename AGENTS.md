@@ -2,7 +2,7 @@
 
 ## Project overview
 
-`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json) plus a hand-written overlay (`src/openapi.overlay.json`) for Libredesk v2.9.2 routes the docs spec lacks. This repository is a fork of metanmai/libredesk-mcp (MIT), `"private": true`, version 0.2.0. One MCP tool is generated per operation (87 at the time of writing: 81 docs + 6 overlay; 46 of them `GET`). The count is logged at startup. **Only `GET` tools are registered unless `LIBREDESK_MCP_ALLOW_WRITES=true`.**
+`libredesk-mcp` is a single-file MCP (Model Context Protocol) server that exposes the [Libredesk](https://libredesk.io) REST API as MCP tools. It dynamically generates all tools at startup from a bundled [OpenAPI 3.0 spec](https://docs.libredesk.io/api-reference/openapi.json) plus a hand-written overlay (`src/openapi.overlay.json`) for Libredesk v2.9.2 routes the docs spec lacks. This repository is a fork of metanmai/libredesk-mcp (MIT), `"private": true`, version 0.2.0. One MCP tool is generated per operation (87 at the time of writing: 81 docs + 6 overlay; 46 of them `GET`). The count is logged at startup. **Write tools are registered unless `LIBREDESK_MCP_READ_ONLY=true`, which keeps only `GET` tools.**
 
 - **Language**: TypeScript (ESM — `"type": "module"` in package.json)
 - **Runtime**: Node.js ≥ 18
@@ -42,7 +42,7 @@ docs/
 ### Startup flow
 
 1. `main()` loads `openapi.json` and `openapi.overlay.json` from `dist/` (falling back to `src/`) and merges them (`mergeOverlay` refuses to redefine an existing method+path, operationId or schema name)
-2. `buildTools()` walks every path+method in the merged spec, flattens parameters and request bodies into MCP tool schemas; `selectTools()` then keeps only `GET` tools unless writes are allowed
+2. `buildTools()` walks every path+method in the merged spec, flattens parameters and request bodies into MCP tool schemas; `selectTools()` then keeps only `GET` tools when `LIBREDESK_MCP_READ_ONLY=true`
 3. Tools are registered via `ListToolsRequestSchema` / `CallToolRequestSchema` handlers on the MCP `Server`
 4. Server connects via `StdioServerTransport` and logs readiness to stderr
 
@@ -80,7 +80,7 @@ Custom, inline dereferencing. `resolveRef` walks the `#/components/schemas/...` 
 | `LIBREDESK_URL` | yes | Base URL, no trailing slash |
 | `LIBREDESK_API_KEY` | yes | Agent API key |
 | `LIBREDESK_API_SECRET` | yes | Agent API secret |
-| `LIBREDESK_MCP_ALLOW_WRITES` | no | Exactly `true` registers write (non-GET) tools; anything else keeps the server read-only |
+| `LIBREDESK_MCP_READ_ONLY` | no | Exactly `true` drops the write (non-GET) tools; anything else (including unset) keeps them |
 | `LIBREDESK_MCP_UPLOAD_DIR` | no | Directory uploads may read from; unset = file-path fields are refused |
 
 Missing env vars log a warning to stderr but do **not** prevent startup — tools that require auth will just get 401 errors from Libredesk.
@@ -101,11 +101,11 @@ When a request body field name collides with a path/query parameter, the MCP too
 
 ### Binary file uploads expect a path string, not file content
 
-The MCP tool schema describes binary fields as `type: "string"` with a description telling the model to pass a file path inside `LIBREDESK_MCP_UPLOAD_DIR`. The actual file read happens inside `callOperation` after `resolveUploadPath` has checked the real path, not at tool-definition time. Never reintroduce a bare `readFileSync(value)`: that let the model read any local file. Uploads are writes, so they also need `LIBREDESK_MCP_ALLOW_WRITES=true`.
+The MCP tool schema describes binary fields as `type: "string"` with a description telling the model to pass a file path inside `LIBREDESK_MCP_UPLOAD_DIR`. The actual file read happens inside `callOperation` after `resolveUploadPath` has checked the real path, not at tool-definition time. Never reintroduce a bare `readFileSync(value)`: that let the model read any local file. Uploads are writes, so they disappear in read-only mode (`LIBREDESK_MCP_READ_ONLY=true`).
 
 ### Read-only filtering happens at registration
 
-`selectTools` drops non-GET tools before the `tools/list` and `tools/call` handlers are built, so a write tool is an "Unknown tool" in read-only mode. `callOperation` itself does not check the mode.
+`selectTools` drops non-GET tools before the `tools/list` and `tools/call` handlers are built, so a write tool is an "Unknown tool" when `LIBREDESK_MCP_READ_ONLY=true`. `callOperation` itself does not check the mode.
 
 ### No trailing-slash normalization on base URL
 
@@ -163,7 +163,7 @@ LIBREDESK_API_SECRET=... \
 node dist/index.js
 ```
 
-The server logs `[libredesk-mcp] ready — <N> tools loaded (read-only; uploads disabled) against http://localhost:9000` on successful startup. Add `LIBREDESK_MCP_ALLOW_WRITES=true` to exercise the write tools.
+The server logs `[libredesk-mcp] ready — <N> tools loaded (writes enabled; uploads disabled) against http://localhost:9000` on successful startup. Add `LIBREDESK_MCP_READ_ONLY=true` to get the read-only tool set.
 
 ## Updating the OpenAPI spec
 
@@ -173,7 +173,7 @@ npm run build && npm test
 npm run check-drift   # fails if an operation lost its route or an overlay operation is now in the docs spec
 ```
 
-Commit `src/openapi.json` and `docs/SPEC_SOURCE.md` together. The tests derive the expected tool count from the spec and overlay, so there is no number to update; the integration job in CI does the same (GET operations only, because it runs read-only).
+Commit `src/openapi.json` and `docs/SPEC_SOURCE.md` together. The tests derive the expected tool count from the spec and overlay, so there is no number to update; the integration job in CI does the same (GET operations only, because the CI spawn sets `LIBREDESK_MCP_READ_ONLY=true`).
 
 ## MCP client configuration
 

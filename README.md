@@ -4,13 +4,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Libredes
 
 > **Fork of [metanmai/libredesk-mcp](https://github.com/metanmai/libredesk-mcp) (MIT).** The upstream history and the MIT `LICENSE` are kept. This fork refreshes the bundled spec to the current Libredesk API (v2.9.x) and keeps a drift check against Libredesk's routes.
 
-Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup). **Read-only by default**: only `GET` operations are registered unless you opt in to writes (see [Hardening](#hardening)).
+Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup). **Writes are enabled by default**; set `LIBREDESK_MCP_READ_ONLY=true` to register only `GET` operations (see [Hardening](#hardening)).
 
-Currently 87 operations: 81 from the published docs spec plus 6 from a hand-written overlay for v2.9.2 routes the docs lack (46 `GET` tools in the default read-only mode). Libredesk reference version: v2.9.2.
+Currently 87 operations: 81 from the published docs spec plus 6 from a hand-written overlay for v2.9.2 routes the docs lack (46 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
 
 ## Tools
 
-One tool per operation, grouped by API tag. Tools marked \* are writes: they exist only with `LIBREDESK_MCP_ALLOW_WRITES=true`. The names come from the `operationId`s, so they can change when the spec is refreshed; `update_ai_provider` of v0.1.0 no longer exists upstream.
+One tool per operation, grouped by API tag. Tools marked \* are writes: they do not exist when `LIBREDESK_MCP_READ_ONLY=true`. The names come from the `operationId`s, so they can change when the spec is refreshed; `update_ai_provider` of v0.1.0 no longer exists upstream.
 
 - **Agents** — `get_agents`, `create_agent` \*, `get_current_agent`, `update_agent_availability` \*, `delete_agent` \*, `get_agent`, `update_agent` \*, `revoke_api_key` \*, `generate_api_key` \*
 - **AI completions** — `ai_completion` \*, `get_ai_prompts`
@@ -87,14 +87,14 @@ Add to your MCP host's config (Cursor, Claude Desktop, etc.):
 | `LIBREDESK_URL` | yes | Base URL of your Libredesk instance, no trailing slash. e.g. `http://localhost:9000` |
 | `LIBREDESK_API_KEY` | yes | Agent API key from the Libredesk admin UI |
 | `LIBREDESK_API_SECRET` | yes | Agent API secret paired with the key |
-| `LIBREDESK_MCP_ALLOW_WRITES` | no | Only the exact value `true` registers the write operations (POST/PUT/PATCH/DELETE). Unset, only `GET` tools exist. |
+| `LIBREDESK_MCP_READ_ONLY` | no | Only the exact value `true` drops the write operations (POST/PUT/PATCH/DELETE), leaving the `GET` tools. Unset, writes are registered. |
 | `LIBREDESK_MCP_UPLOAD_DIR` | no | Directory file uploads may read from. Unset, any tool argument that carries a file path is refused. |
 
 Authentication uses Libredesk's token scheme: `Authorization: token <api_key>:<api_secret>`.
 
 ## Hardening
 
-- **Read-only by default.** Without `LIBREDESK_MCP_ALLOW_WRITES=true` the server lists and accepts only `GET` tools; write tools do not exist for the model. Use an API key of an agent with the narrowest role you need as well: the flag limits what the model can call, the role limits what the key can do.
+- **Opt-in read-only mode.** With `LIBREDESK_MCP_READ_ONLY=true` the server lists and accepts only `GET` tools; write tools do not exist for the model. Writes are on by default, so give the key an agent role as narrow as you need: the flag limits what the model can call, the role limits what the key can do. Ticket content is untrusted input (prompt injection), which is the main reason to prefer read-only when you only need to read.
 - **No arbitrary file reads.** Multipart fields typed as binary (avatar and media uploads) used to read any local path the model supplied. They are now refused unless `LIBREDESK_MCP_UPLOAD_DIR` is set, and then only a regular file whose real path (after symlinks) lies inside that directory is read; relative paths are resolved against it.
 - **Not publishable by accident.** `package.json` has `"private": true`.
 

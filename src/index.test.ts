@@ -660,14 +660,14 @@ describe("array request body", () => {
 });
 
 // ============================================================
-// Hardening: read-only by default
+// Hardening: opt-in read-only mode (writes are on by default)
 // ============================================================
 describe("read-only mode", () => {
   const all = buildTools(loadSpec());
-  const original = process.env.LIBREDESK_MCP_ALLOW_WRITES;
+  const original = process.env.LIBREDESK_MCP_READ_ONLY;
   afterEach(() => {
-    if (original === undefined) delete process.env.LIBREDESK_MCP_ALLOW_WRITES;
-    else process.env.LIBREDESK_MCP_ALLOW_WRITES = original;
+    if (original === undefined) delete process.env.LIBREDESK_MCP_READ_ONLY;
+    else process.env.LIBREDESK_MCP_READ_ONLY = original;
   });
 
   it("registers only GET operations when writes are not allowed", () => {
@@ -686,15 +686,15 @@ describe("read-only mode", () => {
     expect(selectTools(all, true)).toEqual(all);
   });
 
-  it("enables writes only for the exact string 'true'", () => {
-    delete process.env.LIBREDESK_MCP_ALLOW_WRITES;
-    expect(getAllowWrites()).toBe(false);
-    for (const v of ["", "1", "yes", "TRUE", "True", " true"]) {
-      process.env.LIBREDESK_MCP_ALLOW_WRITES = v;
-      expect(getAllowWrites(), JSON.stringify(v)).toBe(false);
-    }
-    process.env.LIBREDESK_MCP_ALLOW_WRITES = "true";
+  it("allows writes by default and drops them only for the exact string 'true'", () => {
+    delete process.env.LIBREDESK_MCP_READ_ONLY;
     expect(getAllowWrites()).toBe(true);
+    for (const v of ["", "1", "yes", "TRUE", "True", " true", "false"]) {
+      process.env.LIBREDESK_MCP_READ_ONLY = v;
+      expect(getAllowWrites(), JSON.stringify(v)).toBe(true);
+    }
+    process.env.LIBREDESK_MCP_READ_ONLY = "true";
+    expect(getAllowWrites()).toBe(false);
   });
 });
 
