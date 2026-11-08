@@ -593,9 +593,57 @@ describe("overlay", () => {
       "get_macro",
       "get_agents_compact",
       "get_teams_compact",
+      "get_automation_rules",
+      "get_automation_rule",
+      "create_automation_rule",
+      "toggle_automation_rule",
     ]) {
       expect(byName.has(n), n).toBe(true);
     }
+  });
+
+  it("models the automation tools: list needs a type, create takes a JSON array of rules, toggle takes no body", () => {
+    const list = byName.get("get_automation_rules")!;
+    expect(list.method).toBe("get");
+    expect(list.queryParams).toEqual([{ name: "type", required: true }]);
+
+    const create = byName.get("create_automation_rule")!;
+    expect(create.method).toBe("post");
+    const props = create.inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(props.rules.type).toBe("array");
+    expect(props.type.enum).toEqual(["new_conversation", "conversation_update", "time_trigger"]);
+    expect(create.inputSchema.required).toEqual(expect.arrayContaining(["name", "type", "rules"]));
+
+    const toggle = byName.get("toggle_automation_rule")!;
+    expect(toggle.method).toBe("put");
+    expect(toggle.pathParams).toEqual(["id"]);
+    expect(toggle.hasBody).toBe(false);
+  });
+
+  it("keeps only the two automation reads in read-only mode", () => {
+    const names = new Set(selectTools(tools, false).map((t) => t.name));
+    expect(names.has("get_automation_rules")).toBe(true);
+    expect(names.has("get_automation_rule")).toBe(true);
+    expect(names.has("create_automation_rule")).toBe(false);
+    expect(names.has("toggle_automation_rule")).toBe(false);
+  });
+
+  it("sends the rule as a JSON array inside the body, not as a string", async () => {
+    const fetchMock = vi.fn(async () => new Response('{"status":"success","data":{}}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const rules = [{ group_operator: "AND", groups: [], actions: [{ type: "assign_user", value: ["5"] }] }];
+    await callOperation(
+      byName.get("create_automation_rule")!,
+      { name: "r", type: "new_conversation", events: [], rules },
+      "http://x.test",
+      "k",
+      "s",
+    );
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://x.test/api/v1/automations/rules");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "r", type: "new_conversation", events: [], rules });
+    vi.unstubAllGlobals();
   });
 
   it("models the assignee lookups: GET only, filters as query parameters", () => {

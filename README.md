@@ -6,7 +6,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Libredes
 
 Exposes the Libredesk REST API as MCP tools, one per operation of the bundled OpenAPI spec (the count is printed at startup). **Writes are enabled by default**; set `LIBREDESK_MCP_READ_ONLY=true` to register only `GET` operations (see [Hardening](#hardening)).
 
-Currently 93 operations: 81 from the published docs spec plus 12 from a hand-written overlay for v2.9.2 routes the docs lack (52 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
+Currently 97 operations: 81 from the published docs spec plus 16 from a hand-written overlay for v2.9.2 routes the docs lack (54 `GET` tools in read-only mode). Libredesk reference version: v2.9.2.
 
 ## Tools
 
@@ -14,6 +14,7 @@ One tool per operation, grouped by API tag. Tools marked \* are writes: they do 
 
 - **Agents** — `get_agents_compact` (agent IDs for assignment, no admin permission needed), `get_agents`, `create_agent` \*, `get_current_agent`, `update_agent_availability` \*, `delete_agent` \*, `get_agent`, `update_agent` \*, `revoke_api_key` \*, `generate_api_key` \*
 - **AI completions** — `ai_completion` \*, `get_ai_prompts`
+- **Automations** — `get_automation_rules`, `get_automation_rule`, `create_automation_rule` \*, `toggle_automation_rule` \* (all need the "Manage automations" permission; editing, deleting and reordering rules stay in the web UI)
 - **Contact notes** — `get_contact_notes`, `create_contact_note` \*, `delete_contact_note` \*
 - **Contacts** — `get_contacts`, `create_contact` \*, `get_contact`, `update_contact` \*, `delete_contact` \*, `block_contact` \*, `export_contact`, `update_contact_custom_attributes` \*
 - **Conversations** — `create_conversation` \*, `get_all_conversations`, `get_assigned_conversations`, `get_unassigned_conversations`, `send_message` \*, `get_message`, `delete_message` \*, `retry_message` \*, `get_conversation`, `update_team_assignee` \*, `remove_team_assignee` \*, `update_user_assignee` \*, `remove_user_assignee` \*, `update_conversation_assignee_last_seen` \*, `get_messages`, `get_conversation_participants`, `update_conversation_priority` \*, `update_conversation_status` \*, `update_conversationtags` \*, `get_view_conversations`, `get_team_unassigned_conversations`, `update_conversation_custom_attributes` \*, `download_conversation_transcript`, `mark_conversation_as_unread` \*, `get_mentioned_conversations`, `get_contact_page_visits`, `get_sidebar_counts`, `get_all_drafts`, `upsert_conversation_draft` \*, `delete_conversation_draft` \*, `apply_macro` \*
@@ -139,6 +140,7 @@ Authentication uses Libredesk's token scheme: `Authorization: token <api_key>:<a
 - **Opt-in read-only mode.** With `LIBREDESK_MCP_READ_ONLY=true` the server lists and accepts only `GET` tools; write tools do not exist for the model. Writes are on by default, so give the key an agent role as narrow as you need: the flag limits what the model can call, the role limits what the key can do. Ticket content is untrusted input (prompt injection), which is the main reason to prefer read-only when you only need to read.
 - **No arbitrary file reads.** Multipart fields typed as binary (avatar and media uploads) used to read any local path the model supplied. They are now refused unless `LIBREDESK_MCP_UPLOAD_DIR` is set, and then only a regular file whose real path (after symlinks) lies inside that directory is read; relative paths are resolved against it.
 - **No credentials in tool output.** Libredesk returns an agent's API key in clear (`GET /agents/me`, agent lists), and tool output ends up in the model's context and in transcripts. Every `api_key` and `api_secret` value of a response is replaced by `[redacted by libredesk-mcp]`, at any depth. The one exception is `generate_api_key`, whose purpose is to return the new credentials. Request parameters and the `Authorization` header are unaffected.
+- **Automation rules are persistent.** `create_automation_rule` stores a rule that is **enabled immediately** and keeps acting on every matching conversation, long after the chat that created it. Libredesk does not validate the rule content, so a malformed rule is stored and never matches: read it back with `get_automation_rule`. Rule actions include `send_reply` (emails the customer) and `trigger_webhook` (calls an external URL): do not let the model use them on its own. Grant "Manage automations" to the MCP agent's role only while you need it, and prefer `LIBREDESK_MCP_READ_ONLY=true` otherwise, which keeps just the two read tools.
 - **Not publishable by accident.** `package.json` has `"private": true`.
 
 ## How it works

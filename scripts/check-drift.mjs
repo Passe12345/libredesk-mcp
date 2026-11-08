@@ -28,7 +28,9 @@ export const OUT_OF_SCOPE = [
   "/api/v1/roles",
   "/api/v1/oidc",
   "/api/v1/webhooks",
-  "/api/v1/automations",
+  // Automations: list, read, create and toggle are covered; editing, deleting and reordering rules stay in the web UI
+  "PUT /api/v1/automations/rules",
+  "DELETE /api/v1/automations/rules",
   "/api/v1/business-hours",
   "/api/v1/templates",
   "/api/v1/sla",

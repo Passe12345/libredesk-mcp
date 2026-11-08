@@ -260,6 +260,90 @@
         }
       }
     },
+    "/api/v1/automations/rules": {
+      "get": {
+        "tags": ["Automations"],
+        "summary": "Get Automation Rules",
+        "operationId": "handleGetAutomationRules",
+        "description": "Automation rules of one type, ordered by weight. Requires the `automations:manage` permission. Pass `type`: a rule list is always read per type (an empty or unknown type returns an empty list, not every rule).",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleGetAutomationRules" },
+        "parameters": [
+          { "name": "type", "in": "query", "required": true, "schema": { "type": "string", "enum": ["new_conversation", "conversation_update", "time_trigger"] }, "description": "Rule type to list" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rules retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleListResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Automations"],
+        "summary": "Create Automation Rule",
+        "operationId": "handleCreateAutomationRule",
+        "description": "Creates an automation rule. Requires the `automations:manage` permission. The rule is ENABLED as soon as it is created (the table default) and starts applying to the next matching conversation; use `toggle_automation_rule` to disable it. The server does not validate the content of `rules`: a malformed rule is stored and then silently never matches, so read it back with `get_automation_rule`. Example, assign every new conversation whose subject contains a text to agent 5: type `new_conversation`, events `[]`, rules `[{\"group_operator\":\"AND\",\"groups\":[{\"logical_op\":\"AND\",\"rules\":[{\"field\":\"subject\",\"field_type\":\"conversation\",\"operator\":\"contains\",\"value\":\"Company switched from\",\"case_sensitive_match\":false}]}],\"actions\":[{\"type\":\"assign_user\",\"value\":[\"5\"]}]}]`.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleCreateAutomationRule" },
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleRequest" } } }
+        },
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rule created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleResponse" } } }
+          },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/automations/rules/{id}": {
+      "get": {
+        "tags": ["Automations"],
+        "summary": "Get Automation Rule",
+        "operationId": "handleGetAutomationRule",
+        "description": "A single automation rule with its conditions and actions, and whether it is enabled. Requires the `automations:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleGetAutomationRule" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Automation rule ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rule retrieved successfully",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/automations/rules/{id}/toggle": {
+      "put": {
+        "tags": ["Automations"],
+        "summary": "Toggle Automation Rule",
+        "operationId": "handleToggleAutomationRule",
+        "description": "Flips the `enabled` flag of a rule (enabled becomes disabled and the reverse) and returns the updated rule. There is no body and no way to set the state explicitly, so read the rule first if the current state matters. Requires the `automations:manage` permission.",
+        "x-source": { "repo": "abhinavxd/libredesk", "tag": "v2.9.2", "file": "cmd/automation.go", "handler": "handleToggleAutomationRule" },
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Automation rule ID" }
+        ],
+        "security": [{ "basicAuth": [] }, { "tokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Rule toggled",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AutomationRuleResponse" } } }
+          },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "description": "Forbidden: requires the `automations:manage` permission", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
     "/api/v1/inboxes/{id}": {
       "get": {
         "tags": ["Inboxes"],
@@ -380,6 +464,83 @@
         "properties": {
           "status": { "type": "string", "example": "success" },
           "data": { "type": "array", "items": { "$ref": "#/components/schemas/TeamCompact" } }
+        }
+      },
+      "AutomationRuleCondition": {
+        "type": "object",
+        "properties": {
+          "field": { "type": "string", "description": "For field_type conversation: subject, content (last message), status, priority, assigned_user, assigned_team, inbox, to, contact_email, hours_since_created, hours_since_first_reply, hours_since_last_reply, hours_since_resolved, hours_since_last_resolved, previous_status, previous_priority, previous_assigned_user, previous_assigned_team. For field_type contact_custom_attribute: the attribute key" },
+          "field_type": { "type": "string", "enum": ["conversation", "contact_custom_attribute"] },
+          "operator": { "type": "string", "enum": ["contains", "not contains", "equals", "not equals", "set", "not set", "greater than", "less than", "starts with"] },
+          "value": { "type": "string", "description": "Text to compare with. IDs (status, priority, agent, team, inbox) are sent as strings" },
+          "case_sensitive_match": { "type": "boolean" }
+        }
+      },
+      "AutomationRuleGroup": {
+        "type": "object",
+        "properties": {
+          "logical_op": { "type": "string", "enum": ["AND", "OR"], "description": "How the conditions of this group combine" },
+          "rules": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRuleCondition" } }
+        }
+      },
+      "AutomationRuleAction": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["assign_team", "assign_user", "set_status", "set_priority", "send_private_note", "send_reply", "set_sla", "add_tags", "set_tags", "remove_tags", "send_csat", "notify", "snooze", "trigger_webhook"], "description": "send_reply emails the customer and trigger_webhook calls an external URL: neither should be used without the user asking for it" },
+          "value": { "type": "array", "items": { "type": "string" }, "description": "assign_team, assign_user, set_status, set_priority and set_sla read the first element as a numeric ID sent as a string; the tag actions take tag names; send_private_note and send_reply take the text" },
+          "subject": { "type": "string", "description": "Only for the notify action" },
+          "message": { "type": "string", "description": "Only for the notify action" },
+          "recipients": { "type": "array", "items": { "type": "string" }, "description": "Only for the notify action: assignee, assigned_team, team:<id> or user:<id>" }
+        }
+      },
+      "AutomationRuleBody": {
+        "type": "object",
+        "description": "One rule block. The record's type, events and execution mode are taken from the record, not from here",
+        "properties": {
+          "group_operator": { "type": "string", "enum": ["AND", "OR"], "description": "How the groups combine" },
+          "groups": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRuleGroup" } },
+          "actions": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRuleAction" } }
+        }
+      },
+      "AutomationRuleRequest": {
+        "type": "object",
+        "required": ["name", "type", "rules"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 140 },
+          "description": { "type": "string", "maxLength": 300 },
+          "type": { "type": "string", "enum": ["new_conversation", "conversation_update", "time_trigger"], "description": "new_conversation: on every new conversation. conversation_update: on the listed events. time_trigger: periodic, on the hours_since_* conditions" },
+          "events": { "type": "array", "items": { "type": "string", "enum": ["conversation.user.assigned", "conversation.team.assigned", "conversation.status.change", "conversation.priority.change", "conversation.message.outgoing", "conversation.message.incoming"] }, "description": "Only for conversation_update; leave empty for the other types" },
+          "rules": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRuleBody" }, "description": "A JSON array of rule blocks, not a string" }
+        }
+      },
+      "AutomationRule": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "type": "string" },
+          "events": { "type": "array", "items": { "type": "string" } },
+          "enabled": { "type": "boolean" },
+          "weight": { "type": "integer", "description": "Order of evaluation, lowest first" },
+          "execution_mode": { "type": "string", "enum": ["all", "first_match"], "description": "For new_conversation rules: apply every matching rule, or only the first" },
+          "rules": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRuleBody" } }
+        }
+      },
+      "AutomationRuleResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/AutomationRule" }
+        }
+      },
+      "AutomationRuleListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AutomationRule" } }
         }
       },
       "MacroActionResponse": {

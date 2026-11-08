@@ -5,7 +5,7 @@ plus a hand-written overlay (`src/openapi.overlay.json`) for helpdesk routes the
 Reference version: Libredesk **v2.9.2** (route table `cmd/handlers.go`, handlers in `cmd/*.go`,
 models in `internal/*/models`). The code wins over the docs when they disagree.
 
-## Overlay operations (12)
+## Overlay operations (16)
 
 Each carries `x-source` (file + handler at v2.9.2) and a request/response shape read from the Go code.
 
@@ -23,6 +23,10 @@ Each carries `x-source` (file + handler at v2.9.2) and a request/response shape 
 | `GET /api/v1/macros/{id}` | `handleGetMacro` | `cmd/macro.go` |
 | `GET /api/v1/agents/compact` | `handleGetAgentsCompact` | `cmd/users.go` |
 | `GET /api/v1/teams/compact` | `handleGetTeamsCompact` | `cmd/teams.go` |
+| `GET /api/v1/automations/rules` | `handleGetAutomationRules` | `cmd/automation.go` |
+| `POST /api/v1/automations/rules` | `handleCreateAutomationRule` | `cmd/automation.go` |
+| `GET /api/v1/automations/rules/{id}` | `handleGetAutomationRule` | `cmd/automation.go` |
+| `PUT /api/v1/automations/rules/{id}/toggle` | `handleToggleAutomationRule` | `cmd/automation.go` |
 
 Assignee lookups (`UserCompact` in `internal/user/models`, `TeamCompact` in `internal/team/models`): both
 routes need only authentication, whereas `GET /agents` needs `users:manage` and `GET /teams` needs
@@ -33,6 +37,26 @@ email), `type` (`agent` or `ai_assistant`, else 400), `enabled=true`, `ids`, `pa
 other filter and the pagination are ignored. The compact agent shape carries no API key. The `System`
 user is never listed. The responses reuse the docs spec's `AgentCompact` and `TeamCompact` schemas,
 which match the Go models field for field (checked); only the list envelopes are new.
+
+Automation rules (`cmd/automation.go`, `internal/automation` and its `models` at v2.9.2), all four routes
+behind `automations:manage`:
+
+- The record is `{name, description, type, events, enabled, weight, execution_mode, rules}`. `rules` is
+  a JSON **array** of rule blocks (`group_operator`, `groups[].logical_op`, `groups[].rules[]` with
+  `field`, `field_type`, `operator`, `value`, `case_sensitive_match`, and `actions[]` with `type` and
+  `value[]`); the engine unmarshals it as `[]Rule`. When rules are loaded, `type`, events and
+  `execution_mode` are overwritten from the record, so the `event` key inside a block is ignored.
+- `CreateRule` does no validation: no check of `type`, operators, fields or action values. The `type`
+  column is a free `VARCHAR`. A malformed rule is stored and silently never matches.
+- The insert does not set `enabled`: the column default is `TRUE`, so a created rule is **active at once**.
+- `GET /rules` filters with `type = $1` and no default: without `type` the list is empty, so the
+  overlay marks `type` required. Ordered by `weight`.
+- `toggle` flips `enabled` with no body and returns the updated record; there is no way to set it explicitly.
+- `assign_user` and `assign_team` take the ID as the first element of `value`, as a string
+  (`strconv.Atoi(action.Value[0])` in `internal/conversation`).
+- Left out (stay in the web UI): `PUT /rules/{id}` (update), `DELETE /rules/{id}`, `PUT /rules/weights`,
+  `PUT /rules/execution-mode`. The condition field list in the overlay comes from the constants of
+  `internal/automation/models`; I did not read the web UI, so its menu labels may differ.
 
 Macro reads (shapes from `internal/macro/models` and `internal/macro/queries.sql`): `/macros` and
 `/macros/{id}` return the full `Macro` (with `message_content`); `/macros/compact` and `/macros/search`
