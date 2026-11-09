@@ -72,11 +72,18 @@ jobs:
       - run: npm install
       - run: npm run build
 
+      - name: Generate a throwaway System password
+        run: |
+          # Ephemeral Libredesk only; the suffix satisfies its strength rules.
+          PW="$(openssl rand -hex 16)Aa1!"
+          echo "::add-mask::$PW"
+          echo "SYSTEM_PW=$PW" >> "$GITHUB_ENV"
+
       - name: Start Libredesk
         run: |
           docker run -d --name libredesk_app \
             --network host \
-            -e LIBREDESK_SYSTEM_USER_PASSWORD="Admin@1234!" \
+            -e LIBREDESK_SYSTEM_USER_PASSWORD="$SYSTEM_PW" \
             -v $PWD/config.ci.toml:/libredesk/config.toml \
             libredesk/libredesk:latest \
             sh -c "./libredesk --install --idempotent-install --yes --config /libredesk/config.toml && ./libredesk --upgrade --yes --config /libredesk/config.toml && ./libredesk --config /libredesk/config.toml"
@@ -99,7 +106,7 @@ jobs:
           # Login and save cookies
           curl -sf -c cookies.txt http://localhost:9000/api/v1/auth/login \
             -H 'Content-Type: application/json' \
-            -d '{"email":"System","password":"Admin@1234!"}' > /dev/null
+            -d "{\"email\":\"System\",\"password\":\"$SYSTEM_PW\"}" > /dev/null
           # Extract CSRF token from cookie jar
           CSRF=$(grep csrf_token cookies.txt | awk '{print $NF}')
           # Generate API key with session cookie and CSRF header
